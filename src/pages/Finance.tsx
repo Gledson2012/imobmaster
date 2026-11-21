@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ArrowUpRight, CircleDollarSign, Download, Plus } from 'lucide-react'
 import Modal from '../components/Modal'
 import { dbDealToApp, appDealToDb, fetchDeals, createDeal, updateDeal, deleteDeal, isSupabaseConfigured } from '../lib/supabase'
+import { localDateInput } from '../lib/dates'
 import type { Deal } from '../types'
 
 type DealForm = {
@@ -14,7 +15,7 @@ type DealForm = {
 }
 
 function emptyForm(): DealForm {
-  return { property:'', client:'', value:'', commission_rate:'5', status:'Em andamento', date:new Date().toISOString().slice(0,10) }
+  return { property:'', client:'', value:'', commission_rate:'5', status:'Em andamento', date:localDateInput() }
 }
 
 const money=(n:number)=>n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
@@ -46,31 +47,33 @@ export default function Finance(){
     if(!f.property||!f.client||!f.value)return
     setLoading(true)
     try{
-      const payload: Omit<Deal,'id'|'created_at'|'user_id'> = {
+      const fields={
         property:f.property,
         client:f.client,
         value:Number(f.value),
         commission_rate:Number(f.commission_rate)||5,
-        status:f.status as Deal['status'],
+        status:f.status,
         date:f.date,
       }
-      if(isSupabaseConfigured){
-        if(editing){
-          await updateDeal(editing, appDealToDb({...payload, id:editing} as Deal))
-          setItems(old=>old.map(d=>d.id===editing?{...d,...payload}:d))
-        } else {
-          const created=await createDeal(appDealToDb(payload as Deal))
-          setItems([dbDealToApp(created),...items])
+      if(editing){
+        // Merge com o negócio original: preserva notes, expected_at, received_at e FKs
+        const original=items.find(d=>d.id===editing)
+        const merged:Deal={...(original as Deal),...fields,id:editing}
+        if(isSupabaseConfigured){
+          await updateDeal(editing,appDealToDb(merged))
         }
+        setItems(old=>old.map(d=>d.id===editing?merged:d))
         setEditing(null)
       } else {
-        if(editing){
-          setItems(old=>old.map(d=>d.id===editing?{...d,...payload}:d))
+        const payload:Omit<Deal,'id'|'created_at'|'user_id'>={...fields}
+        if(isSupabaseConfigured){
+          const created=await createDeal(appDealToDb(payload as Deal))
+          setItems([dbDealToApp(created),...items])
         } else {
           setItems([{id:crypto.randomUUID(),...payload},...items])
         }
-        setF(emptyForm())
       }
+      setF(emptyForm())
       setModal(false)
     } catch(e:any){ alert(e.message||'Erro ao salvar negócio') } finally { setLoading(false) }
   }

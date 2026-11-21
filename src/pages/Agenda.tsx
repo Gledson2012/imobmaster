@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { CalendarDays, Clock, Plus } from 'lucide-react'
 import Modal from '../components/Modal'
 import { dbAppointmentToApp, appAppointmentToDb, fetchAppointments, createAppointment, updateAppointment, deleteAppointment, isSupabaseConfigured } from '../lib/supabase'
+import { localDateInput } from '../lib/dates'
 import type { Appointment } from '../types'
 
 type AppointmentForm = {
@@ -13,7 +14,7 @@ type AppointmentForm = {
 }
 
 function emptyForm(): AppointmentForm {
-  return { title:'', client:'', date:new Date().toISOString().slice(0,10), time:'10:00', kind:'Visita' }
+  return { title:'', client:'', date:localDateInput(), time:'10:00', kind:'Visita' }
 }
 
 export default function Agenda(){
@@ -41,24 +42,27 @@ export default function Agenda(){
     if(!f.title)return
     setLoading(true)
     try{
-      const payload: Omit<Appointment,'id'|'created_at'|'user_id'> = {title:f.title,client:f.client,date:f.date,time:f.time,kind:f.kind as Appointment['kind']}
-      if(isSupabaseConfigured){
-        if(editing){
-          await updateAppointment(editing, appAppointmentToDb({...payload, id:editing} as Appointment))
-          setItems(old=>old.map(a=>a.id===editing?{...a,...payload}:a).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)))
-        } else {
-          const created=await createAppointment(appAppointmentToDb(payload as Appointment))
-          setItems([dbAppointmentToApp(created),...items].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)))
+      const fields={title:f.title,client:f.client,date:f.date,time:f.time,kind:f.kind}
+      const sortFn=(a:Appointment,b:Appointment)=>(a.date+a.time).localeCompare(b.date+b.time)
+      if(editing){
+        // Merge com o compromisso original: preserva notes, client_id, lead_id e property_id
+        const original=items.find(a=>a.id===editing)
+        const merged:Appointment={...(original as Appointment),...fields,id:editing}
+        if(isSupabaseConfigured){
+          await updateAppointment(editing,appAppointmentToDb(merged))
         }
+        setItems(old=>old.map(a=>a.id===editing?merged:a).sort(sortFn))
         setEditing(null)
       } else {
-        if(editing){
-          setItems(old=>old.map(a=>a.id===editing?{...a,...payload}:a).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)))
+        const payload:Omit<Appointment,'id'|'created_at'|'user_id'>={...fields}
+        if(isSupabaseConfigured){
+          const created=await createAppointment(appAppointmentToDb(payload as Appointment))
+          setItems([dbAppointmentToApp(created),...items].sort(sortFn))
         } else {
-          setItems([...items,{id:crypto.randomUUID(),...payload}].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)))
+          setItems([...items,{id:crypto.randomUUID(),...payload}].sort(sortFn))
         }
-        setF(emptyForm())
       }
+      setF(emptyForm())
       setModal(false)
     } catch(e:any){ alert(e.message||'Erro ao salvar compromisso') } finally { setLoading(false) }
   }

@@ -30,7 +30,8 @@ export default function Auth() {
       } else if (mode === 'register') {
         const r = await signUp(email, password, fullName)
         if (r.error) setMsg(r.error, 'error')
-        else setMsg('Conta criada. Confirme seu e-mail se necessário.', 'success')
+        else if (r.needsConfirmation) setMsg('Conta criada! Confirme seu e-mail para entrar.', 'success')
+        else setMsg('Conta criada com sucesso!', 'success')
       } else {
         const r = await resetPassword(email)
         if (r.error) setMsg(r.error, 'error')
@@ -100,17 +101,19 @@ export default function Auth() {
                 placeholder="seu@email.com"
               />
             </label>
-            <label className="auth-label">
-              <Lock size={16} /> Senha
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-              />
-            </label>
+            {mode !== 'reset' && (
+              <label className="auth-label">
+                <Lock size={16} /> Senha
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </label>
+            )}
             <button type="submit" className="btn primary auth-btn" disabled={loading}>
               {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Criar conta' : 'Redefinir senha'}
             </button>

@@ -53,6 +53,7 @@ export type DbLead = {
   source: string | null
   stage: string
   property_id: string | null
+  property_label: string | null
   notes: string | null
   created_at: string
 }
@@ -62,6 +63,7 @@ export type DbAppointment = {
   user_id: string
   title: string
   client_id: string | null
+  client_name: string | null
   lead_id: string | null
   property_id: string | null
   starts_at: string
@@ -75,6 +77,9 @@ export type DbDeal = {
   user_id: string
   property_id: string | null
   client_id: string | null
+  property_label: string | null
+  client_name: string | null
+  deal_date: string | null
   value: number
   commission_rate: number
   status: string
@@ -342,6 +347,7 @@ export async function deletePropertyPhoto(fileName: string): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 import type { Property, Client, Lead, Appointment, Deal } from '../types'
+import { localDateInput, localTimeInput } from './dates'
 
 export function dbPropertyToApp(p: DbProperty): Property {
   return {
@@ -419,7 +425,8 @@ export function dbLeadToApp(l: DbLead): Lead {
     email: l.email ?? undefined,
     source: l.source ?? '',
     stage: l.stage,
-    property: l.property_id ?? undefined,
+    property: l.property_label ?? undefined,
+    property_id: l.property_id ?? undefined,
     notes: l.notes ?? undefined,
     user_id: l.user_id,
     created_at: l.created_at,
@@ -435,6 +442,7 @@ export function appLeadToDb(l: Lead, userId?: string): Omit<DbLead, 'id' | 'crea
     source: l.source || null,
     stage: l.stage,
     property_id: l.property_id ?? null,
+    property_label: l.property ?? null,
     notes: l.notes ?? null,
   }
 }
@@ -444,12 +452,12 @@ export function dbAppointmentToApp(a: DbAppointment): Appointment {
   return {
     id: a.id,
     title: a.title,
-    client: a.client_id ?? '',
+    client: a.client_name ?? '',
     client_id: a.client_id ?? undefined,
     lead_id: a.lead_id ?? undefined,
     property_id: a.property_id ?? undefined,
-    date: d.toISOString().slice(0, 10),
-    time: d.toISOString().slice(11, 16),
+    date: localDateInput(d),
+    time: localTimeInput(d),
     kind: a.kind,
     notes: a.notes ?? undefined,
     user_id: a.user_id,
@@ -462,6 +470,7 @@ export function appAppointmentToDb(a: Appointment, userId?: string): Omit<DbAppo
     ...(userId ? { user_id: userId } : {}),
     title: a.title,
     client_id: a.client_id ?? null,
+    client_name: a.client || null,
     lead_id: a.lead_id ?? null,
     property_id: a.property_id ?? null,
     starts_at: new Date(`${a.date}T${a.time}:00`).toISOString(),
@@ -473,14 +482,14 @@ export function appAppointmentToDb(a: Appointment, userId?: string): Omit<DbAppo
 export function dbDealToApp(d: DbDeal): Deal {
   return {
     id: d.id,
-    property: d.property_id ?? '',
+    property: d.property_label ?? '',
     property_id: d.property_id ?? undefined,
-    client: d.client_id ?? '',
+    client: d.client_name ?? '',
     client_id: d.client_id ?? undefined,
     value: Number(d.value),
     commission_rate: Number(d.commission_rate),
     status: d.status,
-    date: d.created_at.slice(0, 10),
+    date: d.deal_date ?? d.created_at.slice(0, 10),
     expected_at: d.expected_at ?? undefined,
     received_at: d.received_at ?? undefined,
     notes: d.notes ?? undefined,
@@ -494,6 +503,9 @@ export function appDealToDb(d: Deal, userId?: string): Omit<DbDeal, 'id' | 'crea
     ...(userId ? { user_id: userId } : {}),
     property_id: d.property_id ?? null,
     client_id: d.client_id ?? null,
+    property_label: d.property || null,
+    client_name: d.client || null,
+    deal_date: d.date || null,
     value: d.value,
     commission_rate: d.commission_rate,
     status: d.status,

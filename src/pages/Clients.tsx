@@ -127,7 +127,8 @@ export default function Clients(){
                 <td>{c.interest}</td>
                 <td><b>{money(c.budget)}</b></td>
                 <td>
-                  <a className="action-link" href={`https://wa.me/55${c.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"><MessageCircle size={16}/> WhatsApp</a>
+                  <button className="action-link" onClick={()=>edit(c)}>Editar</button>
+                  <a className="action-link" style={{marginLeft:'12px'}} href={`https://wa.me/55${c.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"><MessageCircle size={16}/> WhatsApp</a>
                   <button className="action-link" style={{color:'#ef4444',marginLeft:'12px'}} onClick={()=>remove(c.id)}>Excluir</button>
                 </td>
               </tr>

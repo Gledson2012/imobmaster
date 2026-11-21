@@ -1,4 +1,5 @@
 import type { Appointment, Client, Deal, Lead, Property } from '../types'
+import { localDateInput } from '../lib/dates'
 
 export const demoProperties: Property[] = [
   { id:'p1', code:'IM-001', title:'Apartamento com varanda gourmet', type:'Apartamento', purpose:'Venda', price:685000, city:'Guarujá', neighborhood:'Astúrias', bedrooms:3, bathrooms:2, area:112, status:'Disponível', image_url:'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=900' },
@@ -16,11 +17,11 @@ export const demoLeads: Lead[] = [
   { id:'l3', name:'Paulo Henrique', phone:'(13) 99444-3333', source:'WhatsApp', stage:'Visita agendada', property:'Studio Pitangueiras' }
 ]
 export const demoAppointments: Appointment[] = [
-  { id:'a1', title:'Visita - Apartamento Astúrias', client:'Mariana Oliveira', date:new Date().toISOString().slice(0,10), time:'10:00', kind:'Visita' },
-  { id:'a2', title:'Retorno de proposta', client:'Roberto Santos', date:new Date().toISOString().slice(0,10), time:'14:30', kind:'Follow-up' },
-  { id:'a3', title:'Captação de imóvel', client:'Proprietário novo', date:new Date(Date.now()+86400000).toISOString().slice(0,10), time:'09:00', kind:'Captação' }
+  { id:'a1', title:'Visita - Apartamento Astúrias', client:'Mariana Oliveira', date:localDateInput(), time:'10:00', kind:'Visita' },
+  { id:'a2', title:'Retorno de proposta', client:'Roberto Santos', date:localDateInput(), time:'14:30', kind:'Follow-up' },
+  { id:'a3', title:'Captação de imóvel', client:'Proprietário novo', date:localDateInput(new Date(Date.now()+24*60*60*1000)), time:'09:00', kind:'Captação' }
 ]
 export const demoDeals: Deal[] = [
-  { id:'d1', property:'Apartamento - Astúrias', client:'Mariana Oliveira', value:685000, commission_rate:5, status:'Em andamento', date:new Date().toISOString().slice(0,10) },
-  { id:'d2', property:'Casa - Embaré', client:'Roberto Santos', value:1250000, commission_rate:5, status:'Proposta enviada', date:new Date().toISOString().slice(0,10) }
+  { id:'d1', property:'Apartamento - Astúrias', client:'Mariana Oliveira', value:685000, commission_rate:5, status:'Em andamento', date:localDateInput() },
+  { id:'d2', property:'Casa - Embaré', client:'Roberto Santos', value:1250000, commission_rate:5, status:'Proposta enviada', date:localDateInput() }
 ]

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Phone, MessageCircle, Sparkles, Copy } from 'lucide-react'
+import { Plus, Phone, MessageCircle, Sparkles, Copy, Pencil } from 'lucide-react'
 import Modal from '../components/Modal'
 import { useToast } from '../components/Toast'
 import { dbLeadToApp, appLeadToDb, fetchLeads, createLead, updateLead, deleteLead, isSupabaseConfigured } from '../lib/supabase'
@@ -47,24 +47,26 @@ export default function Leads(){
     if(!f.name)return
     setLoading(true)
     try{
-      const payload: Omit<Lead,'id'|'created_at'|'user_id'> = {name:f.name,phone:f.phone,source:f.source,stage:'Novo',property:f.property||null}
-      if(isSupabaseConfigured){
-        if(editing){
-          await updateLead(editing, appLeadToDb({...payload, id:editing} as Lead))
-          setItems(old=>old.map(l=>l.id===editing?{...l,...payload}:l))
-        } else {
-          const created=await createLead(appLeadToDb(payload as Lead))
-          setItems([dbLeadToApp(created),...items])
+      const fields={name:f.name,phone:f.phone,source:f.source,property:f.property||null}
+      if(editing){
+        // Merge com o lead original: preserva stage, notes, email e property_id
+        const original=items.find(l=>l.id===editing)
+        const merged:Lead={...(original as Lead),...fields,id:editing}
+        if(isSupabaseConfigured){
+          await updateLead(editing,appLeadToDb(merged))
         }
+        setItems(old=>old.map(l=>l.id===editing?merged:l))
         setEditing(null)
       } else {
-        if(editing){
-          setItems(old=>old.map(l=>l.id===editing?{...l,...payload}:l))
+        const payload:Omit<Lead,'id'|'created_at'|'user_id'>={...fields,stage:'Novo'}
+        if(isSupabaseConfigured){
+          const created=await createLead(appLeadToDb(payload as Lead))
+          setItems([dbLeadToApp(created),...items])
         } else {
           setItems([{id:crypto.randomUUID(),...payload},...items])
         }
-        setF(emptyForm())
       }
+      setF(emptyForm())
       setModal(false)
     } catch(e:any){ alert(e.message||'Erro ao salvar lead') } finally { setLoading(false) }
   }
@@ -158,11 +160,12 @@ export default function Leads(){
                     {stages.map(s=><option key={s} value={s}>{s}</option>)}
                   </select>
                   <button className="action-link" title="Resumo com IA" disabled={gerandoResumo===l.id} onClick={()=>gerarResumo(l)}><Sparkles size={15}/></button>
+                  <button className="action-link" title="Editar lead" onClick={()=>edit(l)}><Pencil size={15}/></button>
                   <button className="action-link" style={{color:'#ef4444',marginLeft:'8px'}} onClick={()=>remove(l.id)}>Excluir</button>
                 </div>
               </article>
             )}
-            <button className="add-lead" onClick={()=>setModal(true)}><Plus size={14}/> Adicionar lead</button>
+            <button className="add-lead" onClick={()=>{setF(emptyForm());setEditing(null);setModal(true)}}><Plus size={14}/> Adicionar lead</button>
           </div>
         )}
       </div>

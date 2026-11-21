@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { dbPropertyToApp, dbClientToApp, dbLeadToApp, dbAppointmentToApp, dbDealToApp, fetchProperties, fetchClients, fetchLeads, fetchAppointments, fetchDeals, isSupabaseConfigured } from '../lib/supabase'
 import { useAuth } from '../components/AuthProvider'
+import { localDateInput } from '../lib/dates'
 import type { Property, Client, Lead, Appointment, Deal } from '../types'
 
 const money=(n:number)=>n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
@@ -44,7 +45,7 @@ export default function Dashboard(){
     {label:'Comissões previstas',value:money(deals.reduce((s,d)=>s+d.value*d.commission_rate/100,0)),delta:'Meta 72%',icon:CircleDollarSign,color:'orange',trend:'down'},
   ]
 
-  const today=new Date().toISOString().slice(0,10)
+  const today=localDateInput()
   const todayApps=apps.filter(a=>a.date===today)
 
   const dayNames=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']

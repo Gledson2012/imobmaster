@@ -31,7 +31,7 @@ export async function getSession() {
 /* Cadastro                                                           */
 /* ------------------------------------------------------------------ */
 
-export async function signUp(email: string, password: string, fullName: string): Promise<{ user: AuthUser | null; error: string | null }> {
+export async function signUp(email: string, password: string, fullName: string): Promise<{ user: AuthUser | null; error: string | null; needsConfirmation?: boolean }> {
   if (!supabase) return { user: null, error: 'Supabase não configurado' }
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -41,6 +41,9 @@ export async function signUp(email: string, password: string, fullName: string):
   if (error) return { user: null, error: error.message }
   const user = data.user
   if (!user) return { user: null, error: 'Usuário não retornado' }
+  // Com confirmação de e-mail habilitada, signUp retorna user mas session=null.
+  // Não considerar logado: sem sessão, toda query roda como anônimo e falha.
+  if (!data.session) return { user: null, error: null, needsConfirmation: true }
   return { user: { id: user.id, email: user.email ?? '', full_name: fullName }, error: null }
 }
 

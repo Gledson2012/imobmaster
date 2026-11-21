@@ -53,7 +53,7 @@ export default function Properties(){
     if(!form.title||!form.price)return
     setLoading(true)
     try{
-      const payload: Omit<Property,'id'|'code'|'created_at'|'user_id'> = {
+      const fields={
         title:form.title,
         type:form.type,
         purpose:form.purpose,
@@ -63,26 +63,27 @@ export default function Properties(){
         bedrooms:Number(form.bedrooms),
         bathrooms:Number(form.bathrooms),
         area:Number(form.area),
-        status:'Disponível',
       }
-      if(isSupabaseConfigured){
-        if(editing){
-          await updateProperty(editing, appPropertyToDb({...payload, id:editing} as Property))
-          setItems(old=>old.map(p=>p.id===editing?{...p,...payload}:p))
-        } else {
+      if(editing){
+        // Merge com o imóvel original: preserva status, code, description, address e image_url
+        const original=items.find(p=>p.id===editing)
+        const merged:Property={...(original as Property),...fields,id:editing}
+        if(isSupabaseConfigured){
+          await updateProperty(editing,appPropertyToDb(merged))
+        }
+        setItems(old=>old.map(p=>p.id===editing?merged:p))
+        setEditing(null)
+      } else {
+        const payload:Omit<Property,'id'|'code'|'created_at'|'user_id'>={...fields,status:'Disponível'}
+        if(isSupabaseConfigured){
           const code=`IM-${Date.now().toString(36).toUpperCase()}`
           const created=await createProperty(appPropertyToDb({...payload, code} as Property))
           setItems([dbPropertyToApp(created),...items])
-        }
-        setEditing(null)
-      } else {
-        if(editing){
-          setItems(old=>old.map(p=>p.id===editing?{...p,...payload}:p))
         } else {
-          setItems(old=>[{id:crypto.randomUUID(),code:`IM-${String(old.length+1).padStart(3,'0')}`,...payload,status:'Disponível'},...old])
+          setItems(old=>[{id:crypto.randomUUID(),code:`IM-${String(old.length+1).padStart(3,'0')}`,...payload},...old])
         }
-        setForm(emptyForm())
       }
+      setForm(emptyForm())
       setModal(false)
     } catch(e:any){ alert(e.message||'Erro ao salvar imóvel') } finally { setLoading(false) }
   }

@@ -141,3 +141,11 @@ drop policy if exists "Users can delete their own property photos" on storage.ob
 create policy "Users can delete their own property photos"
 on storage.objects for delete
 using (bucket_id = 'property-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Campos de texto livre dos formulários (mantêm as FKs uuid opcionais).
+-- Idempotente: pode reaplicar em projetos existentes sem perder dados.
+alter table public.leads add column if not exists property_label text;
+alter table public.appointments add column if not exists client_name text;
+alter table public.deals add column if not exists property_label text;
+alter table public.deals add column if not exists client_name text;
+alter table public.deals add column if not exists deal_date date;
