@@ -24,8 +24,8 @@ export default function Sidebar({
 }) {
   return (
     <>
-      <div className={`sidebar-shade ${open ? 'show' : ''}`} onClick={onClose} />
-      <aside className={`sidebar ${open ? 'open' : ''}`}>
+      <div className={`sidebar-shade ${open ? 'show' : ''}`} onClick={onClose} aria-hidden="true" />
+      <aside className={`sidebar ${open ? 'open' : ''}`} id="app-sidebar">
         <div className="brand">
           <div className="brand-mark">
             <Building2 size={22} />
@@ -34,7 +34,7 @@ export default function Sidebar({
             <b>ImobMaster</b>
             <small>GESTÃO IMOBILIÁRIA</small>
           </div>
-          <button className="mobile-close icon-btn" onClick={onClose}>
+          <button className="mobile-close icon-btn" onClick={onClose} aria-label="Fechar menu">
             <X />
           </button>
         </div>
@@ -48,7 +48,7 @@ export default function Sidebar({
           </div>
           <span className="online-dot" />
         </div>
-        <nav>
+        <nav aria-label="Navegação principal">
           {links.map(([to, label, Icon]) => (
             <NavLink
               key={to}
@@ -66,7 +66,7 @@ export default function Sidebar({
             <Settings size={18} /> Configurações
           </NavLink>
           {user && (
-            <button className="sidebar-logout" onClick={onLogout}>
+            <button className="sidebar-logout" onClick={onLogout} title="Sair da conta">
               <LogOut size={16} /> Sair
             </button>
           )}

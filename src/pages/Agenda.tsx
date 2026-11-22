@@ -1,9 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { CalendarDays, Clock, Plus } from 'lucide-react'
 import Modal from '../components/Modal'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { EmptyState, LoadingState } from '../components/States'
+import { useToast } from '../components/Toast'
 import { dbAppointmentToApp, appAppointmentToDb, fetchAppointments, createAppointment, updateAppointment, deleteAppointment, isSupabaseConfigured } from '../lib/supabase'
 import { localDateInput } from '../lib/dates'
 import type { Appointment } from '../types'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 type AppointmentForm = {
   title: string
@@ -14,74 +18,109 @@ type AppointmentForm = {
 }
 
 function emptyForm(): AppointmentForm {
-  return { title:'', client:'', date:localDateInput(), time:'10:00', kind:'Visita' }
+  return { title: '', client: '', date: localDateInput(), time: '10:00', kind: 'Visita' }
 }
 
-export default function Agenda(){
-  const [items,setItems]=useState<Appointment[]>([]); const [modal,setModal]=useState(false)
-  const [f,setF]=useState<AppointmentForm>(emptyForm()); const [loading,setLoading]=useState(false); const [editing,setEditing]=useState<string | null>(null)
+async function fetchAppointmentsList(): Promise<Appointment[]> {
+  if (isSupabaseConfigured) {
+    const db = await fetchAppointments()
+    return db.map(dbAppointmentToApp)
+  }
+  const { demoAppointments } = await import('../data/demo')
+  return demoAppointments
+}
 
-  useEffect(()=>{
-    let mounted=true
-    ;(async ()=>{
-      setLoading(true)
-      try{
-        if(isSupabaseConfigured){
-          const dbItems=await fetchAppointments()
-          setItems(dbItems.map(dbAppointmentToApp))
-        } else {
-          const {demoAppointments}=await import('../data/demo')
-          if(mounted) setItems(demoAppointments)
-        }
-      } catch(e){ console.error(e) } finally { if(mounted) setLoading(false) }
-    })()
-    return ()=>{ mounted=false }
-  },[])
+export default function Agenda() {
+  const [items, setItems] = useState<Appointment[]>([])
+  const [modal, setModal] = useState(false)
+  const [f, setF] = useState<AppointmentForm>(emptyForm())
+  const [editing, setEditing] = useState<string | null>(null)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const { show } = useToast()
+  const queryClient = useQueryClient()
 
-  const save=async ()=>{
-    if(!f.title)return
-    setLoading(true)
-    try{
-      const fields={title:f.title,client:f.client,date:f.date,time:f.time,kind:f.kind}
-      const sortFn=(a:Appointment,b:Appointment)=>(a.date+a.time).localeCompare(b.date+b.time)
-      if(editing){
-        // Merge com o compromisso original: preserva notes, client_id, lead_id e property_id
-        const original=items.find(a=>a.id===editing)
-        const merged:Appointment={...(original as Appointment),...fields,id:editing}
-        if(isSupabaseConfigured){
-          await updateAppointment(editing,appAppointmentToDb(merged))
+  const { data, isLoading } = useQuery({
+    queryKey: ['appointments'],
+    queryFn: fetchAppointmentsList,
+    initialData: [] as Appointment[],
+  })
+
+  const itemsRef = data ?? []
+  const setAppointments = (updater: (old: Appointment[] | undefined) => Appointment[]) => {
+    queryClient.setQueryData(['appointments'] as const, updater)
+  }
+
+  const save = async () => {
+    if (!f.title.trim() || !f.date || !f.time) { show('Informe o título, a data e o horário do compromisso.', 'error'); return }
+    setBusy(true)
+    try {
+      const fields = { title: f.title, client: f.client, date: f.date, time: f.time, kind: f.kind }
+      const sortFn = (a: Appointment, b: Appointment) => (a.date + a.time).localeCompare(b.date + b.time)
+      if (editing) {
+        const original = itemsRef.find(a => a.id === editing)
+        const merged: Appointment = { ...(original as Appointment), ...fields, id: editing }
+        if (isSupabaseConfigured) {
+          await updateAppointment(editing, appAppointmentToDb(merged))
         }
-        setItems(old=>old.map(a=>a.id===editing?merged:a).sort(sortFn))
+        setItems(old => old.map(a => a.id === editing ? merged : a).sort(sortFn))
+        setAppointments(old => old?.map(a => a.id === editing ? merged : a) ?? [])
         setEditing(null)
       } else {
-        const payload:Omit<Appointment,'id'|'created_at'|'user_id'>={...fields}
-        if(isSupabaseConfigured){
-          const created=await createAppointment(appAppointmentToDb(payload as Appointment))
-          setItems([dbAppointmentToApp(created),...items].sort(sortFn))
+        const payload: Omit<Appointment, 'id' | 'created_at' | 'user_id'> = { ...fields }
+        if (isSupabaseConfigured) {
+          const created = await createAppointment(appAppointmentToDb(payload as Appointment))
+          setItems(old => [dbAppointmentToApp(created), ...old].sort(sortFn))
+          setAppointments(old => [dbAppointmentToApp(created), ...(old ?? [])].sort(sortFn))
         } else {
-          setItems([...items,{id:crypto.randomUUID(),...payload}].sort(sortFn))
+          setItems(old => [...old, { id: crypto.randomUUID(), ...payload }].sort(sortFn))
+          setAppointments(old => [...old ?? [], { id: crypto.randomUUID(), ...payload }].sort(sortFn))
         }
       }
       setF(emptyForm())
       setModal(false)
-    } catch(e:any){ alert(e.message||'Erro ao salvar compromisso') } finally { setLoading(false) }
+      show(editing ? 'Compromisso atualizado com sucesso.' : 'Compromisso agendado com sucesso.', 'success')
+    } catch (e: any) {
+      show(e.message || 'Erro ao salvar compromisso', 'error')
+    } finally {
+      setBusy(false)
+    }
   }
 
-  const remove=async (id:string)=>{
-    if(!window.confirm('Excluir este compromisso?')) return
-    setLoading(true)
-    try{
-      if(isSupabaseConfigured){
+    const remove = async (id: string) => {
+    const item = itemsRef.find(a => a.id === id)
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
         await deleteAppointment(id)
-        setItems(old=>old.filter(a=>a.id!==id))
+        setAppointments(old => old?.filter(a => a.id !== id) ?? [])
       } else {
-        setItems(old=>old.filter(a=>a.id!==id))
+        setAppointments(old => old?.filter(a => a.id !== id) ?? [])
       }
-    } catch(e:any){ alert(e.message||'Erro ao excluir compromisso') } finally { setLoading(false) }
+      setConfirmId(null)
+      if (item) {
+        show(`“${item.title}” excluído.`, 'info', { label: 'Desfazer', onClick: () => undoDelete(item) })
+      } else {
+        show('Nada para desfazer.', 'info')
+      }
+    } catch (e: any) {
+      show(e.message || 'Erro ao excluir compromisso', 'error')
+    } finally {
+      setBusy(false)
+    }
   }
 
-  const edit=(a:Appointment)=>{
-    setF({title:a.title,client:a.client,date:a.date,time:a.time,kind:a.kind})
+  const undoDelete = (item: Appointment) => {
+    const dbPayload = appAppointmentToDb(item)
+    setAppointments(old => [item, ...(old ?? [])])
+    setItems(old => [item, ...old])
+    createAppointment(dbPayload).catch(() => {})
+    setConfirmId(null)
+    show('Restaurado com sucesso.', 'success')
+  }
+
+const edit = (a: Appointment) => {
+    setF({ title: a.title, client: a.client, date: a.date, time: a.time, kind: a.kind })
     setEditing(a.id)
     setModal(true)
   }
@@ -94,53 +133,67 @@ export default function Agenda(){
           <h1>Agenda</h1>
           <p>Visitas, reuniões, captações e retornos comerciais.</p>
         </div>
-        <button className="btn primary" onClick={()=>{setF(emptyForm());setEditing(null);setModal(true)}}>
-          <Plus size={17}/> Novo compromisso
+        <button className="btn primary" onClick={() => { setF(emptyForm()); setEditing(null); setModal(true) }}>
+          <Plus size={17} /> Novo compromisso
         </button>
       </div>
       <div className="panel calendar-panel">
-        <div className="panel-heading"><div><h2>Próximos compromissos</h2><p>Organize sua rotina de atendimento</p></div><CalendarDays color="#65d6ad"/></div>
-        {loading?<div style={{padding:'1rem',textAlign:'center',color:'#77839a'}}>Carregando...</div>:
-        items.length===0?<div style={{padding:'1rem',textAlign:'center',color:'#77839a'}}>Nenhum compromisso agendado</div>:
-        items.map(a=>
+        <div className="panel-heading"><div><h2>Próximos compromissos</h2><p>Organize sua rotina de atendimento</p></div><CalendarDays color="#65d6ad" /></div>
+        {isLoading ? <LoadingState /> :
+        itemsRef.length === 0 ? <EmptyState
+          icon={CalendarDays}
+          title="Nenhum compromisso agendado"
+          description="Registre visitas, reuniões e retornos para não perder nenhum atendimento."
+          action={<button className="btn primary" onClick={() => { setF(emptyForm()); setEditing(null); setModal(true) }}><Plus size={16} /> Novo compromisso</button>}
+        /> :
+        itemsRef.map(a => (
           <div className="appointment-row" key={a.id}>
-            <div className="appointment-date"><b>{new Date(a.date+'T12:00:00').getDate()}</b><small>{new Date(a.date+'T12:00:00').toLocaleDateString('pt-BR',{month:'short'}).toUpperCase()}</small></div>
-            <div className="appointment-info"><b>{a.title}</b><span>{a.client}</span><small><Clock size={13}/>{a.time} · {a.kind}</small></div>
-            <div className="appointment-actions" style={{display:'flex',gap:'6px'}}>
-              <button className="btn secondary small" onClick={()=>edit(a)}>Editar</button>
-              <button className="btn secondary small" style={{color:'#ef4444',borderColor:'#ef4444'}} onClick={()=>remove(a.id)}>Excluir</button>
+            <div className="appointment-date"><b>{new Date(a.date + 'T12:00:00').getDate()}</b><small>{new Date(a.date + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase()}</small></div>
+            <div className="appointment-info"><b>{a.title}</b><span>{a.client}</span><small><Clock size={13} />{a.time} · {a.kind}</small></div>
+            <div className="appointment-actions" style={{ display: 'flex', gap: '6px' }}>
+              <button className="btn secondary small" onClick={() => edit(a)}>Editar</button>
+              <button className="btn secondary small" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => setConfirmId(a.id)}>Excluir</button>
             </div>
             <span className="tag">{a.kind}</span>
           </div>
-        )}
-        {!isSupabaseConfigured&&<div style={{padding:'8px',color:'#77839a',fontSize:'13px'}}>Modo demonstração (local)</div>}
+        ))}
+        {!isSupabaseConfigured && <div style={{ padding: '8px', color: '#77839a', fontSize: '13px' }}>Modo demonstração (local)</div>}
       </div>
-      {modal&&(
-        <Modal title={editing?'Editar compromisso':'Novo compromisso'} onClose={()=>{setModal(false);setF(emptyForm());setEditing(null)}}>
+      {modal && (
+        <Modal title={editing ? 'Editar compromisso' : 'Novo compromisso'} onClose={() => { setModal(false); setF(emptyForm()); setEditing(null) }}>
           <div className="form-grid">
             <label className="span-2">Título
-              <input required value={f.title} onChange={e=>setF({...f,title:e.target.value})} placeholder="Ex.: Visita ao apartamento"/>
+              <input required value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Ex.: Visita ao apartamento" />
             </label>
             <label className="span-2">Cliente / contato
-              <input value={f.client} onChange={e=>setF({...f,client:e.target.value})}/>
+              <input value={f.client} onChange={e => setF({ ...f, client: e.target.value })} />
             </label>
             <label>Data
-              <input type="date" value={f.date} onChange={e=>setF({...f,date:e.target.value})}/>
+              <input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} />
             </label>
             <label>Horário
-              <input type="time" value={f.time} onChange={e=>setF({...f,time:e.target.value})}/>
+              <input type="time" value={f.time} onChange={e => setF({ ...f, time: e.target.value })} />
             </label>
             <label className="span-2">Tipo
-              <select value={f.kind} onChange={e=>setF({...f,kind:e.target.value})}>
+              <select value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })}>
                 <option>Visita</option><option>Follow-up</option><option>Captação</option><option>Reunião</option>
               </select>
             </label>
           </div>
           <div className="modal-actions">
-            <button className="btn secondary" onClick={()=>{setModal(false);setF(emptyForm());setEditing(null)}}>Cancelar</button>
-            <button className="btn primary" onClick={save} disabled={loading}>{loading?'Salvando...':'Salvar compromisso'}</button>
+            <button className="btn secondary" onClick={() => { setModal(false); setF(emptyForm()); setEditing(null) }}>Cancelar</button>
+            <button className="btn primary" onClick={save} disabled={busy}>{busy ? 'Salvando...' : 'Salvar compromisso'}</button>
           </div>
         </Modal>
+      )}
+      {confirmId && (
+        <ConfirmDialog
+          title="Excluir compromisso"
+          message={`Tem certeza que deseja excluir “${itemsRef.find(a => a.id === confirmId)?.title || 'este compromisso'}”? Esta ação não pode ser desfeita.`}
+          busy={busy}
+          onConfirm={() => remove(confirmId)}
+          onCancel={() => setConfirmId(null)}
+        />
       )}
     </div>
   )

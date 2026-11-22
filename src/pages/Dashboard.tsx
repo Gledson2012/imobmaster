@@ -1,12 +1,24 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Building2, CalendarCheck, CircleDollarSign, Plus, Target, TrendingUp } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Building2, CalendarCheck, CircleDollarSign, Plus, Target, TrendingUp } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import PropertyImage from '../components/PropertyImage'
-import { dbPropertyToApp, dbLeadToApp, dbAppointmentToApp, dbDealToApp, fetchProperties, fetchLeads, fetchAppointments, fetchDeals, isSupabaseConfigured } from '../lib/supabase'
+import { EmptyState, LoadingState } from '../components/States'
+import {
+  dbPropertyToApp,
+  dbLeadToApp,
+  dbAppointmentToApp,
+  dbDealToApp,
+  fetchProperties,
+  fetchLeads,
+  fetchAppointments,
+  fetchDeals,
+  isSupabaseConfigured,
+} from '../lib/supabase'
 import { useAuth } from '../components/AuthProvider'
 import { localDateInput } from '../lib/dates'
 import type { Property, Lead, Appointment, Deal } from '../types'
+import { useQuery } from '@tanstack/react-query'
 
 const money=(n:number)=>n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
 const commission=(d:Deal)=>d.value*d.commission_rate/100
@@ -15,35 +27,46 @@ const monthShort=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','N
 const monthNames=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 const dayNames=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']
 
+async function fetchDashboardData(): Promise<{
+  properties: Property[]
+  leads: Lead[]
+  appointments: Appointment[]
+  deals: Deal[]
+}> {
+  if (isSupabaseConfigured) {
+    const [p, l, a, d] = await Promise.all([
+      fetchProperties(),
+      fetchLeads(),
+      fetchAppointments(),
+      fetchDeals(),
+    ])
+    return {
+      properties: p.map(dbPropertyToApp),
+      leads: l.map(dbLeadToApp),
+      appointments: a.map(dbAppointmentToApp),
+      deals: d.map(dbDealToApp),
+    }
+  }
+  const mod = await import('../data/demo')
+  return {
+    properties: mod.demoProperties,
+    leads: mod.demoLeads,
+    appointments: mod.demoAppointments,
+    deals: mod.demoDeals,
+  }
+}
+
 export default function Dashboard(){
   const {user}=useAuth()
-  const [props,setProps]=useState<Property[]>([])
-  const [leads,setLeads]=useState<Lead[]>([])
-  const [apps,setApps]=useState<Appointment[]>([])
-  const [deals,setDeals]=useState<Deal[]>([])
-  const [loading,setLoading]=useState(true)
+  const { data, isLoading } = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: fetchDashboardData,
+  })
 
-  useEffect(()=>{
-    let mounted=true
-    ;(async ()=>{
-      setLoading(true)
-      try{
-        if(isSupabaseConfigured){
-          const [p,l,a,d]=await Promise.all([fetchProperties(),fetchLeads(),fetchAppointments(),fetchDeals()])
-          if(mounted){
-            setProps(p.map(dbPropertyToApp))
-            setLeads(l.map(dbLeadToApp))
-            setApps(a.map(dbAppointmentToApp))
-            setDeals(d.map(dbDealToApp))
-          }
-        } else {
-          const {demoProperties,demoLeads,demoAppointments,demoDeals}=await import('../data/demo')
-          if(mounted){setProps(demoProperties);setLeads(demoLeads);setApps(demoAppointments);setDeals(demoDeals)}
-        }
-      } catch(e){ console.error(e) } finally { if(mounted) setLoading(false) }
-    })()
-    return ()=>{mounted=false}
-  },[])
+  const props = data?.properties ?? []
+  const leads = data?.leads ?? []
+  const apps = data?.appointments ?? []
+  const deals = data?.deals ?? []
 
   const now=new Date()
   const today=localDateInput(now)
@@ -58,7 +81,6 @@ export default function Dashboard(){
     const activeDeals=deals.filter(d=>ACTIVE_DEAL_STATUSES.includes(d.status))
     const expected=activeDeals.reduce((s,d)=>s+commission(d),0)
     const closedDeals=deals.filter(d=>d.status==='Fechado')
-    // Volume fechado por mês (últimos 12 meses), pela data de recebimento (ou data do negócio)
     const chart:{name:string;v:number}[]=[]
     for(let i=11;i>=0;i--){
       const m=new Date(now.getFullYear(),now.getMonth()-i,1)
@@ -93,13 +115,13 @@ export default function Dashboard(){
         <Link className="btn primary" to="/imoveis"><Plus size={17}/> Novo imóvel</Link>
       </div>
       <div className="stats-grid">
-        {stats.map(s=>
+        {stats.map(s=>(
           <div className="stat-card" key={s.label}>
             <div className="stat-top"><span>{s.label}</span><div className={`stat-icon ${s.color}`}><s.icon size={19}/></div></div>
             <strong>{s.value}</strong>
             <div className="stat-foot"><span>{s.foot}</span></div>
           </div>
-        )}
+        ))}
       </div>
       <div className="dashboard-grid">
         <section className="panel chart-panel">
@@ -112,15 +134,15 @@ export default function Dashboard(){
         <section className="panel">
           <div className="panel-heading"><div><h2>Próximos compromissos</h2><p>Sua agenda de hoje</p></div><Link to="/agenda" className="text-link">Ver agenda</Link></div>
           <div className="agenda-list">
-            {loading?<div style={{padding:'1rem',color:'#77839a'}}>Carregando...</div>:
-            todayApps.length===0?<div style={{padding:'1rem',color:'#77839a'}}>Sem compromissos para hoje</div>:
-            todayApps.slice(0,3).map(a=>
+            {isLoading?<LoadingState/>:
+            todayApps.length===0?<EmptyState icon={CalendarCheck} title="Sem compromissos para hoje" description="Sua agenda está livre. Use o tempo para prospectar novos leads."/>:
+            todayApps.slice(0,3).map(a=>(
               <div className="agenda-item" key={a.id}>
                 <div className="agenda-time">{a.time}</div>
                 <div className="agenda-line"/>
                 <div><b>{a.title}</b><small>{a.client}</small><span className="tag">{a.kind}</span></div>
               </div>
-            )}
+            ))}
           </div>
         </section>
       </div>
@@ -128,29 +150,29 @@ export default function Dashboard(){
         <section className="panel">
           <div className="panel-heading"><div><h2>Imóveis recentes</h2><p>Últimos imóveis do seu catálogo</p></div><Link to="/imoveis" className="text-link">Ver todos</Link></div>
           <div className="property-mini-list">
-            {loading?<div style={{padding:'1rem',color:'#77839a'}}>Carregando...</div>:
-            props.length===0?<div style={{padding:'1rem',color:'#77839a'}}>Nenhum imóvel cadastrado</div>:
-            props.slice(0,3).map(p=>
+            {isLoading?<LoadingState/>:
+            props.length===0?<EmptyState icon={Building2} title="Nenhum imóvel cadastrado" description="Cadastre um imóvel para começar a montar seu catálogo."/>:
+            props.slice(0,3).map(p=>(
               <div className="property-mini" key={p.id}>
                 <PropertyImage src={p.image_url} alt={p.title}/>
                 <div><b>{p.title}</b><small>{p.neighborhood}, {p.city} · {p.bedrooms} quartos</small><strong>{money(p.price)}</strong></div>
                 <span className={`status ${p.status==='Disponível'?'available':'pending'}`}>{p.status}</span>
               </div>
-            )}
+            ))}
           </div>
         </section>
         <section className="panel">
           <div className="panel-heading"><div><h2>Leads recentes</h2><p>Oportunidades para acompanhar</p></div><Link to="/leads" className="text-link">Ver funil</Link></div>
           <div className="lead-list">
-            {loading?<div style={{padding:'1rem',color:'#77839a'}}>Carregando...</div>:
-            leads.length===0?<div style={{padding:'1rem',color:'#77839a'}}>Nenhum lead cadastrado</div>:
-            leads.slice(0,5).map(l=>
+            {isLoading?<LoadingState/>:
+            leads.length===0?<EmptyState icon={Target} title="Nenhum lead cadastrado" description="Adicione oportunidades para acompanhar seu funil de vendas."/>:
+            leads.slice(0,5).map(l=>(
               <div className="lead-row" key={l.id}>
                 <div className="lead-avatar">{l.name.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
                 <div><b>{l.name}</b><small>{l.source}</small></div>
                 <span className="tag">{l.stage}</span>
               </div>
-            )}
+            ))}
           </div>
         </section>
       </div>

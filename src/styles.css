@@ -49,3 +49,60 @@
 
 /* --- Notices --- */
 .notice{font-size:12px;color:var(--muted);margin-top:10px}
+
+/* --- UX: keyboard focus, contrast, touch --- */
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+textarea{font:inherit}
+.eyebrow{color:#8595ae}
+.crumb,.stat-foot,.muted{color:#9aa7bc}
+.btn.danger{background:#8b2424;color:#fff;border-color:#a33}
+.btn.danger:hover{background:#a52c2c}
+@media(pointer:coarse){
+  .icon-btn,.action-link,.lead-card-footer a,.image-more,.toast-dismiss{min-width:44px;min-height:44px}
+  .btn,.btn.small,.input-search,.form-grid input,.form-grid select,.form-grid textarea{min-height:44px}
+  .lead-card-footer select{min-height:40px}
+}
+.filter-select{background:#172238;border:1px solid #2b3850;color:#bdc8d9;border-radius:8px;padding:9px 11px;font-size:11px;min-height:38px}
+.sidebar-logout{display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;border:0;border-radius:9px;background:transparent;color:#9aa7bc;font-size:13px;text-align:left}
+.sidebar-logout:hover{background:#2a1a1a;color:#fca5a5}
+@media(max-width:760px){
+  .page-heading{flex-wrap:wrap}
+  .page-heading>.btn{min-width:44px;min-height:44px}
+  .sidebar{padding-bottom:calc(25px + env(safe-area-inset-bottom))}
+  .page{padding-bottom:calc(26px + env(safe-area-inset-bottom))}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* --- Toasts --- */
+.toast-container{position:fixed;top:20px;right:20px;z-index:1000;display:flex;flex-direction:column;gap:8px;pointer-events:none;max-width:min(380px,calc(100vw - 28px))}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:10px;padding:11px 12px 11px 14px;border-radius:10px;color:#f4f8ff;font-size:13px;line-height:1.4;box-shadow:0 8px 24px #0007;border:1px solid #ffffff24;animation:toast-in .2s ease-out}
+.toast svg{flex-shrink:0}
+.toast-message{flex:1}
+.toast--success{background:#155e3f}
+.toast--error{background:#7f1d1d}
+.toast--info{background:#1e3a5f}
+.toast-action{margin-left:auto;background:#155e3f;color:#86efac;border:1px solid #65d6ad;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.toast-action:hover{background:#1a7a55}
+.toast-dismiss{border:0;background:transparent;color:inherit;opacity:.75;display:grid;place-items:center;padding:4px;border-radius:6px}
+.toast-dismiss:hover{opacity:1;background:#ffffff1f}
+@keyframes toast-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media(max-width:760px){.toast-container{top:auto;right:14px;left:14px;bottom:14px;max-width:none}.toast{font-size:12px}}
+
+/* --- Empty and loading states --- */
+.empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;gap:7px;padding:32px 18px}
+.empty-state-icon{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#1b2d39;color:var(--mint);margin-bottom:3px}
+.empty-state strong{font:600 13px Manrope;color:#dce5f3}
+.empty-state p{font-size:11px;color:#9aa7bc;margin:0;max-width:340px;line-height:1.5}
+.empty-state .btn{margin-top:6px}
+.loading-state{display:flex;align-items:center;justify-content:center;gap:10px;padding:28px 16px;color:#9aa7bc;font-size:11px}
+.spinner{width:16px;height:16px;border:2px solid #2b3a54;border-top-color:var(--mint);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.confirm-message{font-size:12px;color:#c5cede;line-height:1.6;margin:16px 0 0}
+
+/* --- Quick search --- */
+.palette-search{width:100%;height:44px;margin-top:16px}
+.palette-list{display:grid;gap:4px;margin-top:14px}
+.palette-item{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:8px;color:#bdc8d9;text-decoration:none;font-size:12px}
+.palette-item:hover{background:#1a2a3e;color:var(--mint)}
+.palette-item svg:last-child{margin-left:auto;opacity:.5}
+.palette-empty{padding:18px;text-align:center;color:#9aa7bc;font-size:12px;margin:0}
