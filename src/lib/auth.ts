@@ -85,8 +85,19 @@ export async function signOut(): Promise<{ error: string | null }> {
 export async function resetPassword(email: string): Promise<{ error: string | null }> {
   if (!supabase) return { error: 'Supabase não configurado' }
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/configuracoes`,
+    redirectTo: `${window.location.origin}/redefinir-senha`,
   })
+  if (error) return { error: error.message }
+  return { error: null }
+}
+
+/* ------------------------------------------------------------------ */
+/* Nova senha (usado na página de recuperação)                        */
+/* ------------------------------------------------------------------ */
+
+export async function updatePassword(password: string): Promise<{ error: string | null }> {
+  if (!supabase) return { error: 'Supabase não configurado' }
+  const { error } = await supabase.auth.updateUser({ password })
   if (error) return { error: error.message }
   return { error: null }
 }
@@ -95,24 +106,24 @@ export async function resetPassword(email: string): Promise<{ error: string | nu
 /* Observador de auth                                                 */
 /* ------------------------------------------------------------------ */
 
-export type AuthChangeCallback = (user: AuthUser | null) => void
+export type AuthChangeCallback = (user: AuthUser | null, event?: string) => void
 
 export function onAuthStateChange(callback: AuthChangeCallback) {
   if (!supabase) {
     callback(null)
     return () => {}
   }
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
     const user = session?.user
     if (!user) {
-      callback(null)
+      callback(null, event)
       return
     }
     callback({
       id: user.id,
       email: user.email ?? '',
       full_name: user.user_metadata?.full_name as string | undefined,
-    })
+    }, event)
   })
   return () => {
     data.subscription.unsubscribe()

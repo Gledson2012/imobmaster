@@ -58,7 +58,6 @@ export default function Sidebar({
             >
               <Icon size={18} />
               <span>{label}</span>
-              {label === 'Leads' && <i>3</i>}
             </NavLink>
           ))}
         </nav>

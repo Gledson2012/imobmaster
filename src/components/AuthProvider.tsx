@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { onAuthStateChange, getCurrentUser, signIn, signUp, signOut, resetPassword } from '../lib/auth'
+import { onAuthStateChange, getCurrentUser, signIn, signUp, signOut, resetPassword, updatePassword } from '../lib/auth'
 import { isSupabaseConfigured } from '../lib/supabase'
 import type { AuthUser } from '../types'
 
@@ -10,12 +10,16 @@ const AuthContext = createContext<{
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>
   signOut: () => Promise<{ error: string | null }>
   resetPassword: (email: string) => Promise<{ error: string | null }>
+  updatePassword: (password: string) => Promise<{ error: string | null }>
+  recoveryMode: boolean
+  clearRecovery: () => void
   isConfigured: boolean
 } | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [recoveryMode, setRecoveryMode] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -24,9 +28,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })()
 
-    const unsubscribe = onAuthStateChange((u) => {
+    const unsubscribe = onAuthStateChange((u, event) => {
       setUser(u)
       setLoading(false)
+      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true)
+      if (event === 'SIGNED_OUT') setRecoveryMode(false)
     })
     return unsubscribe
   }, [])
@@ -53,6 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return resetPassword(email)
   }
 
+  const updatePasswordFn = async (password: string) => {
+    return updatePassword(password)
+  }
+
   const value = {
     user,
     loading,
@@ -60,6 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp: signUpFn,
     signOut: signOutFn,
     resetPassword: resetPasswordFn,
+    updatePassword: updatePasswordFn,
+    recoveryMode,
+    clearRecovery: () => setRecoveryMode(false),
     isConfigured: isSupabaseConfigured,
   }
 

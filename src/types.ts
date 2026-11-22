@@ -1,4 +1,4 @@
-export type PropertyStatus = 'Disponível' | 'Em negociação' | 'Vendido' | 'Aluguedo' | 'Alugado'
+export type PropertyStatus = 'Disponível' | 'Em negociação' | 'Vendido' | 'Alugado'
 export type Property = {
   id: string; code: string; title: string; type: string; purpose: 'Venda' | 'Aluguel'
   price: number; city: string; neighborhood: string; bedrooms: number; bathrooms: number

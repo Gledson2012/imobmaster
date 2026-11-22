@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowUpRight, CircleDollarSign, Download, Plus } from 'lucide-react'
+import { CircleDollarSign, Download, Plus } from 'lucide-react'
 import Modal from '../components/Modal'
 import { dbDealToApp, appDealToDb, fetchDeals, createDeal, updateDeal, deleteDeal, isSupabaseConfigured } from '../lib/supabase'
 import { localDateInput } from '../lib/dates'
@@ -41,7 +41,26 @@ export default function Finance(){
     return ()=>{ mounted=false }
   },[])
 
-  const expected=items.reduce((s,d)=>s+d.value*d.commission_rate/100,0)
+  const commission=(d:Deal)=>d.value*d.commission_rate/100
+  const activeDeals=items.filter(d=>d.status==='Em andamento'||d.status==='Proposta enviada')
+  const expected=activeDeals.reduce((s,d)=>s+commission(d),0)
+  const closedDeals=items.filter(d=>d.status==='Fechado')
+  const monthNow=localDateInput().slice(0,7)
+  const closedThisMonth=closedDeals.filter(d=>(d.received_at??d.date).slice(0,7)===monthNow)
+  const receivedMonth=closedThisMonth.reduce((s,d)=>s+commission(d),0)
+  const receivedTotal=closedDeals.reduce((s,d)=>s+commission(d),0)
+
+  const exportCsv=()=>{
+    const header='Imóvel/Negócio;Cliente;Valor (R$);Taxa (%);Comissão (R$);Status;Data'
+    const rows=items.map(d=>[d.property,d.client,d.value.toFixed(2).replace('.',','),String(d.commission_rate).replace('.',','),commission(d).toFixed(2).replace('.',','),d.status,d.date].join(';'))
+    const blob=new Blob(['\uFEFF'+[header,...rows].join('\r\n')],{type:'text/csv;charset=utf-8'})
+    const url=URL.createObjectURL(blob)
+    const a=document.createElement('a')
+    a.href=url
+    a.download=`negocios-imobmaster-${localDateInput()}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const save=async ()=>{
     if(!f.property||!f.client||!f.value)return
@@ -106,12 +125,12 @@ export default function Finance(){
           <p>Acompanhe suas comissões e previsões de recebimento.</p>
         </div>
         <button className="btn secondary" onClick={()=>{setF(emptyForm());setEditing(null);setModal(true)}}><Plus size={16}/> Nova negociação</button>
-        <button className="btn secondary"><Download size={16}/> Exportar</button>
+        <button className="btn secondary" onClick={exportCsv} disabled={items.length===0}><Download size={16}/> Exportar CSV</button>
       </div>
       <div className="stats-grid three">
-        <div className="stat-card"><div className="stat-top"><span>Comissões previstas</span><CircleDollarSign className="mint-text"/></div><strong>{money(expected)}</strong><div className="stat-foot">Em negociações ativas</div></div>
-        <div className="stat-card"><div className="stat-top"><span>Recebido no mês</span><CircleDollarSign className="blue-text"/></div><strong>R$ 8.500</strong><div className="stat-foot"><span className="positive"><ArrowUpRight size={14}/> 12%</span> vs. mês anterior</div></div>
-        <div className="stat-card"><div className="stat-top"><span>Meta mensal</span><CircleDollarSign className="purple-text"/></div><strong>72%</strong><div className="progress"><i style={{width:'72%'}}/></div><div className="stat-foot">R$ 18.000 de R$ 25.000</div></div>
+        <div className="stat-card"><div className="stat-top"><span>Comissões previstas</span><CircleDollarSign className="mint-text"/></div><strong>{money(expected)}</strong><div className="stat-foot">{activeDeals.length} negociações ativas</div></div>
+        <div className="stat-card"><div className="stat-top"><span>Recebido no mês</span><CircleDollarSign className="blue-text"/></div><strong>{money(receivedMonth)}</strong><div className="stat-foot">{closedThisMonth.length} negócios fechados neste mês</div></div>
+        <div className="stat-card"><div className="stat-top"><span>Comissões recebidas</span><CircleDollarSign className="purple-text"/></div><strong>{money(receivedTotal)}</strong><div className="stat-foot">{closedDeals.length} negócios fechados no total</div></div>
       </div>
       <section className="panel table-panel">
         <div className="panel-heading"><div><h2>Negociações e comissões</h2><p>Estimativa calculada com a taxa cadastrada em cada negócio</p></div></div>
@@ -127,7 +146,7 @@ export default function Finance(){
                 <td>{money(d.value)}</td>
                 <td>{d.commission_rate}%</td>
                 <td><b className="mint-text">{money(d.value*d.commission_rate/100)}</b></td>
-                <td><span className="status pending">{d.status}</span></td>
+                <td><span className={`status ${d.status==='Fechado'?'available':'pending'}`}>{d.status}</span></td>
                 <td>
                   <button className="action-link" onClick={()=>edit(d)}>Editar</button>
                   <button className="action-link" style={{color:'#ef4444'}} onClick={()=>remove(d.id)}>Excluir</button>

@@ -324,22 +324,38 @@ export async function deleteDeal(id: string): Promise<void> {
 
 const BUCKET = 'property-photos'
 
+/* Bucket PRIVADO: image_url guarda o PATH do objeto (não URL pública).
+   A primeira pasta precisa ser o UID do usuário (policy de Storage).
+   A exibição gera signed URL via getSignedPhotoUrl. */
+
+export function isStoragePath(url?: string | null): boolean {
+  return !!url && !/^https?:\/\//i.test(url) && !url.startsWith('data:') && !url.startsWith('blob:')
+}
+
 export async function uploadPropertyPhoto(propertyId: string, file: File): Promise<string> {
   const sb = await requireClient()
-  const fileName = `${propertyId}/${Date.now()}-${file.name.replace(/\s+/g, '_')}`
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) throw new Error('Sessão expirada. Entre novamente para enviar fotos.')
+  const fileName = `${user.id}/${propertyId}/${Date.now()}-${file.name.replace(/\s+/g, '_')}`
   const { error: upError } = await sb.storage.from(BUCKET).upload(fileName, file, {
     cacheControl: '3600',
     upsert: false,
   })
   if (upError) handleError(upError, 'enviar foto')
-  const { data } = sb.storage.from(BUCKET).getPublicUrl(fileName)
-  return data.publicUrl
+  return fileName
 }
 
 export async function deletePropertyPhoto(fileName: string): Promise<void> {
   const sb = await requireClient()
   const { error } = await sb.storage.from(BUCKET).remove([fileName])
   if (error) handleError(error, 'remover foto')
+}
+
+export async function getSignedPhotoUrl(path: string): Promise<string | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600)
+  if (error) return null
+  return data.signedUrl
 }
 
 /* ------------------------------------------------------------------ */

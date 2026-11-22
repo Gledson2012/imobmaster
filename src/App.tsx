@@ -10,6 +10,7 @@ import Finance from './pages/Finance'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Auth from './components/Auth'
+import ResetPassword from './pages/ResetPassword'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading, isConfigured } = useAuth()
@@ -31,6 +32,7 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="auth" element={<RequireGuest><Auth /></RequireGuest>} />
+        <Route path="redefinir-senha" element={<ResetPassword />} />
         <Route element={<RequireAuth><Layout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="imoveis" element={<Properties />} />

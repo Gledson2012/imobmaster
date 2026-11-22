@@ -1,11 +1,14 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Plus, Search, SlidersHorizontal, MapPin, BedDouble, Bath, Maximize2, MoreHorizontal, Sparkles, Copy } from 'lucide-react'
 import Modal from '../components/Modal'
+import PropertyImage from '../components/PropertyImage'
 import { useToast } from '../components/Toast'
-import { dbPropertyToApp, appPropertyToDb, fetchProperties, createProperty, updateProperty, deleteProperty, isSupabaseConfigured } from '../lib/supabase'
+import { dbPropertyToApp, appPropertyToDb, fetchProperties, createProperty, updateProperty, deleteProperty, uploadPropertyPhoto, deletePropertyPhoto, isStoragePath, isSupabaseConfigured } from '../lib/supabase'
 import { generatePropertyCopy } from '../lib/ai'
-import type { Property } from '../types'
+import type { Property, PropertyStatus } from '../types'
 const money=(n:number)=>n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
+
+const STATUSES: PropertyStatus[] = ['Disponível','Em negociação','Vendido','Alugado']
 
 type PropertyForm = {
   title: string
@@ -17,10 +20,14 @@ type PropertyForm = {
   bedrooms: string
   bathrooms: string
   area: string
+  status: PropertyStatus
+  description: string
+  address: string
+  photo: File | null
 }
 
 function emptyForm(): PropertyForm {
-  return { title:'', type:'Apartamento', purpose:'Venda', price:'', city:'Guarujá', neighborhood:'', bedrooms:'2', bathrooms:'1', area:'70' }
+  return { title:'', type:'Apartamento', purpose:'Venda', price:'', city:'Guarujá', neighborhood:'', bedrooms:'2', bathrooms:'1', area:'70', status:'Disponível', description:'', address:'', photo:null }
 }
 
 export default function Properties(){
@@ -37,7 +44,7 @@ export default function Properties(){
       try{
         if(isSupabaseConfigured){
           const dbItems=await fetchProperties()
-          setItems(dbItems.map(dbPropertyToApp))
+          if(mounted) setItems(dbItems.map(dbPropertyToApp))
         } else {
           const {demoProperties}=await import('../data/demo')
           if(mounted) setItems(demoProperties)
@@ -48,6 +55,10 @@ export default function Properties(){
   },[])
 
   const filtered=useMemo(()=>items.filter(p=>(p.title+p.city+p.neighborhood+p.code).toLowerCase().includes(query.toLowerCase())),[items,query])
+
+  // Preview local da foto selecionada (demo ou antes do upload)
+  const previewUrl=useMemo(()=>form.photo?URL.createObjectURL(form.photo):null,[form.photo])
+  useEffect(()=>()=>{ if(previewUrl) URL.revokeObjectURL(previewUrl) },[previewUrl])
 
   const save=async ()=>{
     if(!form.title||!form.price)return
@@ -63,24 +74,43 @@ export default function Properties(){
         bedrooms:Number(form.bedrooms),
         bathrooms:Number(form.bathrooms),
         area:Number(form.area),
+        status:form.status,
+        description:form.description.trim()||undefined,
+        address:form.address.trim()||undefined,
       }
       if(editing){
-        // Merge com o imóvel original: preserva status, code, description, address e image_url
+        // Merge com o imóvel original: preserva code e image_url (até trocar a foto)
         const original=items.find(p=>p.id===editing)
-        const merged:Property={...(original as Property),...fields,id:editing}
+        let merged:Property={...(original as Property),...fields,id:editing}
         if(isSupabaseConfigured){
           await updateProperty(editing,appPropertyToDb(merged))
+          if(form.photo){
+            const path=await uploadPropertyPhoto(editing,form.photo)
+            if(original?.image_url&&isStoragePath(original.image_url)){
+              deletePropertyPhoto(original.image_url).catch(()=>{})
+            }
+            await updateProperty(editing,{image_url:path})
+            merged={...merged,image_url:path}
+          }
+        } else if(form.photo&&previewUrl){
+          merged={...merged,image_url:previewUrl}
         }
         setItems(old=>old.map(p=>p.id===editing?merged:p))
         setEditing(null)
       } else {
-        const payload:Omit<Property,'id'|'code'|'created_at'|'user_id'>={...fields,status:'Disponível'}
+        const payload:Omit<Property,'id'|'code'|'created_at'|'user_id'>={...fields}
         if(isSupabaseConfigured){
           const code=`IM-${Date.now().toString(36).toUpperCase()}`
-          const created=await createProperty(appPropertyToDb({...payload, code} as Property))
+          let created=await createProperty(appPropertyToDb({...payload, code} as Property))
+          if(form.photo){
+            const path=await uploadPropertyPhoto(created.id,form.photo)
+            await updateProperty(created.id,{image_url:path})
+            created={...created,image_url:path}
+          }
           setItems([dbPropertyToApp(created),...items])
         } else {
-          setItems(old=>[{id:crypto.randomUUID(),code:`IM-${String(old.length+1).padStart(3,'0')}`,...payload},...old])
+          const demoPhoto=form.photo&&previewUrl?{image_url:previewUrl}:{}
+          setItems(old=>[{id:crypto.randomUUID(),code:`IM-${String(old.length+1).padStart(3,'0')}`,...payload,...demoPhoto},...old])
         }
       }
       setForm(emptyForm())
@@ -93,7 +123,11 @@ export default function Properties(){
     setLoading(true)
     try{
       if(isSupabaseConfigured){
+        const p=items.find(x=>x.id===id)
         await deleteProperty(id)
+        if(p?.image_url&&isStoragePath(p.image_url)){
+          deletePropertyPhoto(p.image_url).catch(()=>{})
+        }
         setItems(old=>old.filter(p=>p.id!==id))
       } else {
         setItems(old=>old.filter(p=>p.id!==id))
@@ -102,7 +136,7 @@ export default function Properties(){
   }
 
   const edit=(p:Property)=>{
-    setForm({title:p.title,type:p.type,purpose:p.purpose,price:String(p.price),city:p.city,neighborhood:p.neighborhood,bedrooms:String(p.bedrooms),bathrooms:String(p.bathrooms),area:String(p.area)})
+    setForm({title:p.title,type:p.type,purpose:p.purpose,price:String(p.price),city:p.city,neighborhood:p.neighborhood,bedrooms:String(p.bedrooms),bathrooms:String(p.bathrooms),area:String(p.area),status:p.status,description:p.description||'',address:p.address||'',photo:null})
     setEditing(p.id)
     setModal(true)
   }
@@ -136,6 +170,8 @@ export default function Properties(){
     }
   }
 
+  const editingItem=editing?items.find(p=>p.id===editing):undefined
+
   return (
     <div className="page-content">
       <div className="page-heading">
@@ -163,7 +199,7 @@ export default function Properties(){
         filtered.map(p=>
           <article className="property-card" key={p.id}>
             <div className="property-image">
-              <img src={p.image_url||'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=900'} alt={p.title} />
+              <PropertyImage src={p.image_url} alt={p.title}/>
               <span className={`status ${p.status==='Disponível'?'available':'pending'}`}>{p.status}</span>
               <button className="image-more"><MoreHorizontal/></button>
             </div>
@@ -194,7 +230,7 @@ export default function Properties(){
             </label>
             <label>Tipo
               <select required value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
-                <option>Apartamento</option><option>Casa</option><option>Terreno</option>
+                <option>Apartamento</option><option>Casa</option><option>Terreno</option><option>Studio</option><option>Comercial</option>
               </select>
             </label>
             <label>Finalidade
@@ -208,8 +244,16 @@ export default function Properties(){
             <label>Cidade
               <input required value={form.city} onChange={e=>setForm({...form,city:e.target.value})}/>
             </label>
+            <label>Status
+              <select value={form.status} onChange={e=>setForm({...form,status:e.target.value as PropertyStatus})}>
+                {STATUSES.map(s=><option key={s}>{s}</option>)}
+              </select>
+            </label>
             <label className="span-2">Bairro
               <input value={form.neighborhood} onChange={e=>setForm({...form,neighborhood:e.target.value})}/>
+            </label>
+            <label className="span-2">Endereço
+              <input value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="Rua, número, complemento"/>
             </label>
             <label>Quartos
               <input type="number" value={form.bedrooms} onChange={e=>setForm({...form,bedrooms:e.target.value})}/>
@@ -219,6 +263,19 @@ export default function Properties(){
             </label>
             <label>Área (m²)
               <input type="number" value={form.area} onChange={e=>setForm({...form,area:e.target.value})}/>
+            </label>
+            <label className="span-2">Descrição
+              <textarea rows={3} value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Destaques do imóvel para o anúncio"/>
+            </label>
+            <label className="span-2">Foto do imóvel
+              <input type="file" accept="image/*" onChange={e=>setForm({...form,photo:e.target.files?.[0]??null})}/>
+              {(previewUrl||editingItem?.image_url)&&(
+                <span style={{display:'block',marginTop:'8px'}}>
+                  {previewUrl
+                    ?<img src={previewUrl} alt="Preview da foto" style={{maxWidth:'100%',maxHeight:'160px',borderRadius:'8px',objectFit:'cover'}}/>
+                    :<PropertyImage src={editingItem?.image_url} alt={editingItem?.title||'Foto atual'} style={{maxWidth:'100%',maxHeight:'160px',borderRadius:'8px',objectFit:'cover'}}/>}
+                </span>
+              )}
             </label>
           </div>
           <div className="modal-actions">
