@@ -19,22 +19,22 @@ export default function Settings() {
   })
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !user) return
-    setName(profile?.full_name || '')
+    if (!user) return
+    setName(profile?.full_name || user.full_name || '')
     setPhone(profile?.phone || '')
-  }, [user, profile, isSupabaseConfigured])
+  }, [user, profile])
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setMsg({ text: '', kind: 'info' })
     try {
-      if (isSupabaseConfigured && user) {
+      if (user) {
         const r = await updateProfile(user.id, { full_name: name, phone: phone })
         if (r.error) setMsg({ text: r.error, kind: 'error' })
         else setMsg({ text: 'Perfil atualizado com sucesso.', kind: 'success' })
       } else {
-        setMsg({ text: 'Perfil de demonstração atualizado nesta sessão.', kind: 'info' })
+        setMsg({ text: 'Perfil atualizado nesta sessão.', kind: 'info' })
       }
     } catch (err: any) {
       setMsg({ text: err.message || 'Erro inesperado', kind: 'error' })
@@ -70,16 +70,16 @@ export default function Settings() {
         {isSupabaseConfigured && user && <button className="btn secondary" style={{ marginTop: '8px', background: '#ef4444', borderColor: '#ef4444' }} onClick={handleLogout}>Sair da conta</button>}
       </section>
       <section className="panel settings-panel">
-        <h2>Conexão com Supabase</h2>
-        <p>Banco de dados e autenticação do ImobMaster.</p>
-        <span className={`status ${isSupabaseConfigured ? 'available' : 'pending'}`}>{isSupabaseConfigured ? 'Variáveis configuradas' : 'Aguardando configuração'}</span>
-        <p className="muted">Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no arquivo .env. Consulte o README para executar o SQL e habilitar a persistência.</p>
+        <h2>Armazenamento local (100% gratuito)</h2>
+        <p>Seus dados são salvos no navegador (localStorage), sem custo e sem servidor externo.</p>
+        <span className="status available">Modo offline ativo</span>
+        <p className="muted">Para limpar os dados, use a opção "Limpar dados do site" do navegador. Nenhuma conta ou chave de API é necessária.</p>
       </section>
       <section className="panel settings-panel">
-        <h2>Assistente de IA</h2>
-        <p>Gere anúncios de imóveis e resumos de leads pelas Edge Functions do Supabase. Sem provedor de IA configurado, o texto é gerado localmente no servidor (fallback).</p>
-        <span className={`status ${isSupabaseConfigured ? 'available' : 'pending'}`}>{isSupabaseConfigured ? 'Funções disponíveis no projeto' : 'Aguardando configuração do Supabase'}</span>
-        <p className="muted">Deploy: <code>supabase functions deploy generate-property-copy lead-summary</code>. Para IA real, configure os secrets <code>AI_API_KEY</code> e <code>VITE_AI_ENDPOINT</code> no projeto Supabase.</p>
+        <h2>Assistente de IA (local)</h2>
+        <p>Gere anúncios de imóveis e resumos de leads diretamente no navegador, sem custo e sem provedor externo.</p>
+        <span className="status available">IA local ativa</span>
+        <p className="muted">O texto é gerado por modelos locais de fallback. Nenhuma chave de API é enviada.</p>
       </section>
     </div>
   )

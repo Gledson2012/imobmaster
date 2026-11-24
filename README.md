@@ -2,13 +2,14 @@
 
 Aplicativo PWA em React + TypeScript para corretor autônomo. Interface dark responsiva, com módulos de imóveis, clientes, leads (pipeline), agenda, financeiro, relatórios e configurações.
 
-> **Estado desta entrega:** o frontend está conectado ao Supabase com autenticação (cadastro, login, recuperação de senha, logout) e persistência CRUD real nas tabelas `properties`, `clients`, `leads`, `appointments` e `deals`, com Row Level Security isolando os dados por corretor. Dados demonstrativos locais continuam disponíveis como fallback quando o Supabase não está configurado. WhatsApp abre conversas por link `wa.me`. A IA está implementada via Edge Functions (`generate-property-copy` e `lead-summary`): com os secrets do provedor configurados, chama o modelo; sem eles, gera texto localmente no servidor (fallback).
+> **Estado desta entrega:** aplicativo 100% gratuito e offline. Todos os dados (imóveis, clientes, leads, agenda, negócios e perfil) são persistidos localmente no navegador (localStorage), sem servidor externo, sem conta e sem custo. WhatsApp abre conversas por link `wa.me`. A IA (copy de anúncios e resumo de leads) é gerada localmente no navegador, sem chamada externa e sem chave de API.
 
 ## Requisitos
 
 - Node.js 20 ou superior (recomendado)
 - npm
-- Conta Supabase gratuita
+
+Nenhum serviço externo é necessário: o app funciona 100% offline e gratuito.
 
 ## Executar localmente
 

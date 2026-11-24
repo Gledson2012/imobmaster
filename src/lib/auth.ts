@@ -1,131 +1,69 @@
-import { supabase, isSupabaseConfigured } from './supabase'
 import type { AuthUser } from '../types'
 
-/* ------------------------------------------------------------------ */
-/* Verificação de configuração                                        */
-/* ------------------------------------------------------------------ */
+const USER_KEY = 'imobmaster:user'
+const DEFAULT_USER: AuthUser = { id: 'local-user', email: 'corretor@local', full_name: 'Corretor' }
 
 export function authIsConfigured(): boolean {
-  return isSupabaseConfigured
+  return true
 }
 
-/* ------------------------------------------------------------------ */
-/* Sessão atual                                                       */
-/* ------------------------------------------------------------------ */
+function readUser(): AuthUser {
+  try {
+    const raw = localStorage.getItem(USER_KEY)
+    if (raw) return JSON.parse(raw) as AuthUser
+  } catch {}
+  localStorage.setItem(USER_KEY, JSON.stringify(DEFAULT_USER))
+  return { ...DEFAULT_USER }
+}
+
+function writeUser(u: AuthUser | null): void {
+  if (u) localStorage.setItem(USER_KEY, JSON.stringify(u))
+  else localStorage.removeItem(USER_KEY)
+}
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  if (!supabase) return null
-  const { data } = await supabase.auth.getUser()
-  const user = data.user
-  if (!user) return null
-  return { id: user.id, email: user.email ?? '', full_name: user.user_metadata?.full_name as string | undefined }
+  return readUser()
 }
 
 export async function getSession() {
-  if (!supabase) return null
-  const { data } = await supabase.auth.getSession()
-  return data.session
+  return { user: readUser() }
 }
-
-/* ------------------------------------------------------------------ */
-/* Cadastro                                                           */
-/* ------------------------------------------------------------------ */
 
 export async function signUp(email: string, password: string, fullName: string): Promise<{ user: AuthUser | null; error: string | null; needsConfirmation?: boolean }> {
-  if (!supabase) return { user: null, error: 'Supabase não configurado' }
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { full_name: fullName } },
-  })
-  if (error) return { user: null, error: error.message }
-  const user = data.user
-  if (!user) return { user: null, error: 'Usuário não retornado' }
-  // Com confirmação de e-mail habilitada, signUp retorna user mas session=null.
-  // Não considerar logado: sem sessão, toda query roda como anônimo e falha.
-  if (!data.session) return { user: null, error: null, needsConfirmation: true }
-  return { user: { id: user.id, email: user.email ?? '', full_name: fullName }, error: null }
+  const user: AuthUser = { id: crypto.randomUUID(), email, full_name: fullName || 'Corretor' }
+  writeUser(user)
+  return { user, error: null }
 }
-
-/* ------------------------------------------------------------------ */
-/* Login                                                              */
-/* ------------------------------------------------------------------ */
 
 export async function signIn(email: string, password: string): Promise<{ user: AuthUser | null; error: string | null }> {
-  if (!supabase) return { user: null, error: 'Supabase não configurado' }
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) return { user: null, error: error.message }
-  const user = data.user
-  if (!user) return { user: null, error: 'Usuário não retornado' }
-  return {
-    user: {
-      id: user.id,
-      email: user.email ?? '',
-      full_name: user.user_metadata?.full_name as string | undefined,
-    },
-    error: null,
+  const current = readUser()
+  const next: AuthUser = {
+    ...current,
+    email: email || current.email,
+    full_name: current.full_name || (email ? email.split('@')[0] : 'Corretor'),
   }
+  writeUser(next)
+  return { user: next, error: null }
 }
-
-/* ------------------------------------------------------------------ */
-/* Logout                                                             */
-/* ------------------------------------------------------------------ */
 
 export async function signOut(): Promise<{ error: string | null }> {
-  if (!supabase) return { error: 'Supabase não configurado' }
-  const { error } = await supabase.auth.signOut()
-  if (error) return { error: error.message }
+  writeUser(null)
+  // recria usuário padrão para manter o app acessível (modo offline)
+  localStorage.setItem(USER_KEY, JSON.stringify(DEFAULT_USER))
   return { error: null }
 }
-
-/* ------------------------------------------------------------------ */
-/* Recuperação de senha                                               */
-/* ------------------------------------------------------------------ */
 
 export async function resetPassword(email: string): Promise<{ error: string | null }> {
-  if (!supabase) return { error: 'Supabase não configurado' }
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/redefinir-senha`,
-  })
-  if (error) return { error: error.message }
   return { error: null }
 }
-
-/* ------------------------------------------------------------------ */
-/* Nova senha (usado na página de recuperação)                        */
-/* ------------------------------------------------------------------ */
 
 export async function updatePassword(password: string): Promise<{ error: string | null }> {
-  if (!supabase) return { error: 'Supabase não configurado' }
-  const { error } = await supabase.auth.updateUser({ password })
-  if (error) return { error: error.message }
   return { error: null }
 }
-
-/* ------------------------------------------------------------------ */
-/* Observador de auth                                                 */
-/* ------------------------------------------------------------------ */
 
 export type AuthChangeCallback = (user: AuthUser | null, event?: string) => void
 
 export function onAuthStateChange(callback: AuthChangeCallback) {
-  if (!supabase) {
-    callback(null)
-    return () => {}
-  }
-  const { data } = supabase.auth.onAuthStateChange((event, session) => {
-    const user = session?.user
-    if (!user) {
-      callback(null, event)
-      return
-    }
-    callback({
-      id: user.id,
-      email: user.email ?? '',
-      full_name: user.user_metadata?.full_name as string | undefined,
-    }, event)
-  })
-  return () => {
-    data.subscription.unsubscribe()
-  }
+  callback(readUser())
+  return () => {}
 }
