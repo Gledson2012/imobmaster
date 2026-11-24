@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './components/AuthProvider'
+import Unlock from './components/Unlock'
+import { isLockEnabled } from './lib/lock'
 import Layout from './components/Layout'
 import { QueryProvider } from './lib/query'
 
@@ -39,10 +41,17 @@ function RequireGuest({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function LockedGate({ children }: { children: React.ReactNode }) {
+  const [locked, setLocked] = useState(isLockEnabled())
+  if (locked) return <Unlock onUnlock={() => setLocked(false)} />
+  return <>{children}</>
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <QueryProvider>
+        <LockedGate>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="auth" element={<RequireGuest><Auth /></RequireGuest>} />
@@ -60,6 +69,7 @@ export default function App() {
             </Route>
           </Routes>
         </Suspense>
+        </LockedGate>
       </QueryProvider>
     </AuthProvider>
   )

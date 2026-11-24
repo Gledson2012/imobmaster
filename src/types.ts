@@ -3,6 +3,9 @@ export type Property = {
   id: string; code: string; title: string; type: string; purpose: 'Venda' | 'Aluguel'
   price: number; city: string; neighborhood: string; bedrooms: number; bathrooms: number
   area: number; status: PropertyStatus; image_url?: string | null
+  images?: string[] | null
+  lat?: number | null; lng?: number | null
+  tags?: string[] | null
   description?: string | null; address?: string | null; user_id?: string; created_at?: string
 }
 export type Client = { id: string; name: string; email: string; phone: string; interest: string; budget: number; notes?: string | null; user_id?: string; created_at?: string }

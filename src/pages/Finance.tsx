@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast'
 import { dbDealToApp, appDealToDb, fetchDeals, createDeal, updateDeal, deleteDeal, isSupabaseConfigured } from '../lib/supabase'
 import { localDateInput } from '../lib/dates'
 import type { Deal } from '../types'
+import { isPositiveNumber } from '../lib/validate'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 type DealForm = {
@@ -40,6 +41,8 @@ export default function Finance() {
   const [editing, setEditing] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [page, setPage] = useState(1)
+  const pageSize = 10
   const { show } = useToast()
   const queryClient = useQueryClient()
 
@@ -77,7 +80,10 @@ export default function Finance() {
   }
 
   const save = async () => {
-    if (!f.property.trim() || !f.client.trim() || !f.value) { show('Informe o negócio, o cliente e o valor.', 'error'); return }
+    if (!f.property.trim()) { show('Informe o imóvel/negócio.', 'error'); return }
+    if (!f.client.trim()) { show('Informe o cliente.', 'error'); return }
+    if (!isPositiveNumber(f.value)) { show('Informe um valor válido maior que zero.', 'error'); return }
+    if (f.commission_rate && !isPositiveNumber(f.commission_rate)) { show('Taxa de comissão inválida.', 'error'); return }
     setBusy(true)
     try {
       const fields = {
@@ -188,7 +194,7 @@ const edit = (d: Deal) => {
               description="Registre suas negociações para acompanhar comissões previstas e recebidas."
               action={<button className="btn primary" onClick={() => { setF(emptyForm()); setEditing(null); setModal(true) }}><Plus size={16} /> Nova negociação</button>}
             /></td></tr> :
-            itemsRef.map(d => (
+            itemsRef.slice((page - 1) * pageSize, page * pageSize).map(d => (
               <tr key={d.id}>
                 <td><b>{d.property}</b></td>
                 <td>{d.client}</td>
@@ -204,6 +210,13 @@ const edit = (d: Deal) => {
             ))}
           </tbody>
         </table>
+        {itemsRef.length > pageSize && (
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', padding: '8px' }}>
+            <button className="btn secondary small" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button>
+            <span className="muted">Página {page} de {Math.ceil(itemsRef.length / pageSize)}</span>
+            <button className="btn secondary small" disabled={page >= Math.ceil(itemsRef.length / pageSize)} onClick={() => setPage(p => p + 1)}>Próxima</button>
+          </div>
+        )}
         {!isSupabaseConfigured && <div style={{ padding: '8px', color: '#77839a', fontSize: '13px' }}>Modo demonstração (local)</div>}
       </section>
       {modal && (

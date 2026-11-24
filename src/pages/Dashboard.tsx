@@ -58,10 +58,19 @@ async function fetchDashboardData(): Promise<{
 
 export default function Dashboard(){
   const {user}=useAuth()
+  const [goal, setGoal] = useState<number>(() => Number(localStorage.getItem('imobmaster:goal') || 0))
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: fetchDashboardData,
   })
+
+  const setGoalValue = () => {
+    const v = prompt('Meta de comissão para este mês (R$):', String(goal || ''))
+    if (v == null) return
+    const n = Number(v.replace(/\\D/g, '')) || 0
+    setGoal(n)
+    localStorage.setItem('imobmaster:goal', String(n))
+  }
 
   const props = data?.properties ?? []
   const leads = data?.leads ?? []
@@ -91,6 +100,10 @@ export default function Dashboard(){
     const chartTotal=closedDeals.reduce((s,d)=>s+d.value,0)
     return {activeProps,activeLeads,closedLeads,lostLeads,visitsMonth,activeDeals,expected,closedDeals,chart,chartTotal}
   },[props,leads,apps,deals,monthNow])
+
+  const receivedMonth = derived.closedDeals
+    .filter(d => (d.received_at ?? d.date).slice(0, 7) === monthNow)
+    .reduce((s, d) => s + commission(d), 0)
 
   const stats=[
     {label:'Imóveis ativos',value:String(derived.activeProps),icon:Building2,color:'mint',foot:`${props.length} no catálogo`},
@@ -122,6 +135,18 @@ export default function Dashboard(){
             <div className="stat-foot"><span>{s.foot}</span></div>
           </div>
         ))}
+      </div>
+      {goal > 0 && (
+        <section className="panel" style={{ marginBottom: '1rem' }}>
+          <div className="panel-heading"><div><h2>Meta do mês</h2><p>Progresso de comissões recebidas</p></div></div>
+          <div className="metric-line">
+            <div><span>{money(receivedMonth)} de {money(goal)}</span><b>{Math.min(100, Math.round((receivedMonth / goal) * 100))}%</b></div>
+            <div className="progress"><i style={{ width: `${Math.min(100, Math.round((receivedMonth / goal) * 100))}%` }} /></div>
+          </div>
+        </section>
+      )}
+      <div style={{ marginBottom: '1rem' }}>
+        <button className="btn secondary small" onClick={setGoalValue}>{goal > 0 ? 'Ajustar meta do mês' : 'Definir meta do mês'}</button>
       </div>
       <div className="dashboard-grid">
         <section className="panel chart-panel">

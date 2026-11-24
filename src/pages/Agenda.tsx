@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CalendarDays, Clock, Plus } from 'lucide-react'
+import { CalendarDays, Clock, Plus, Download, Bell } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { EmptyState, LoadingState } from '../components/States'
@@ -47,12 +47,59 @@ export default function Agenda() {
   })
 
   const itemsRef = data ?? []
+
+  const exportIcs = () => {
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ImobMaster//Agenda//PT']
+    itemsRef.forEach(a => {
+      const dt = new Date(`${a.date}T${a.time}:00`)
+      const stamp = dt.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+      const end = new Date(dt.getTime() + 60 * 60 * 1000).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+      lines.push('BEGIN:VEVENT')
+      lines.push(`UID:${a.id}@imobmaster`)
+      lines.push(`DTSTAMP:${stamp}`)
+      lines.push(`DTSTART:${stamp}`)
+      lines.push(`DTEND:${end}`)
+      lines.push(`SUMMARY:${a.title}`)
+      if (a.client) lines.push(`DESCRIPTION:Cliente: ${a.client} (${a.kind})`)
+      lines.push('END:VEVENT')
+    })
+    lines.push('END:VCALENDAR')
+    const blob = new Blob([lines.join('\\r\\n')], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `agenda-imobmaster.ics`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const enableNotifications = async () => {
+    if (!('Notification' in window)) { show('Notificações não suportadas neste navegador.', 'error'); return }
+    const perm = await Notification.requestPermission()
+    if (perm !== 'granted') { show('Permissão de notificação negada.', 'error'); return }
+    const now = Date.now()
+    let scheduled = 0
+    itemsRef.forEach(a => {
+      const when = new Date(`${a.date}T${a.time}:00`).getTime()
+      const delay = when - now
+      if (delay > 0 && delay < 1000 * 60 * 60 * 24) {
+        setTimeout(() => {
+          new Notification(a.title, { body: `${a.client} · ${a.time} (${a.kind})` })
+        }, delay)
+        scheduled++
+      }
+    })
+    show(`${scheduled} lembrete(s) agendado(s).`, 'success')
+  }
+
   const setAppointments = (updater: (old: Appointment[] | undefined) => Appointment[]) => {
     queryClient.setQueryData(['appointments'] as const, updater)
   }
 
   const save = async () => {
-    if (!f.title.trim() || !f.date || !f.time) { show('Informe o título, a data e o horário do compromisso.', 'error'); return }
+    if (!f.title.trim()) { show('Informe o título do compromisso.', 'error'); return }
+    if (!f.date) { show('Informe a data do compromisso.', 'error'); return }
+    if (!f.time) { show('Informe o horário do compromisso.', 'error'); return }
     setBusy(true)
     try {
       const fields = { title: f.title, client: f.client, date: f.date, time: f.time, kind: f.kind }
@@ -133,6 +180,8 @@ const edit = (a: Appointment) => {
           <h1>Agenda</h1>
           <p>Visitas, reuniões, captações e retornos comerciais.</p>
         </div>
+        <button className="btn secondary" onClick={exportIcs} disabled={itemsRef.length === 0}><Download size={16} /> Exportar ICS</button>
+        <button className="btn secondary" onClick={enableNotifications}><Bell size={16} /> Lembretes</button>
         <button className="btn primary" onClick={() => { setF(emptyForm()); setEditing(null); setModal(true) }}>
           <Plus size={17} /> Novo compromisso
         </button>

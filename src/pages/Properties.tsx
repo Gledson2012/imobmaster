@@ -8,9 +8,22 @@ import { useToast } from '../components/Toast'
 import { dbPropertyToApp, appPropertyToDb, fetchProperties, createProperty, updateProperty, deleteProperty, uploadPropertyPhoto, deletePropertyPhoto, isStoragePath, isSupabaseConfigured } from '../lib/supabase'
 import { generatePropertyCopy } from '../lib/ai'
 import type { Property, PropertyStatus } from '../types'
+import { isPositiveNumber } from '../lib/validate'
+import { useT } from '../lib/i18n'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import 'leaflet/dist/leaflet.css'
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import L from 'leaflet'
 
 const money=(n:number)=>n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
+
+// Corrige ícone padrão do Leaflet com bundlers
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+})
 const STATUSES: PropertyStatus[] = ['Disponível','Em negociação','Vendido','Alugado']
 
 type PropertyForm = {
@@ -27,10 +40,14 @@ type PropertyForm = {
   description: string
   address: string
   photo: File | null
+  photos: File[]
+  tags: string
+  lat: string
+  lng: string
 }
 
 function emptyForm(): PropertyForm {
-  return { title:'', type:'Apartamento', purpose:'Venda', price:'', city:'Guarujá', neighborhood:'', bedrooms:'2', bathrooms:'1', area:'70', status:'Disponível', description:'', address:'', photo:null }
+  return { title:'', type:'Apartamento', purpose:'Venda', price:'', city:'Guarujá', neighborhood:'', bedrooms:'2', bathrooms:'1', area:'70', status:'Disponível', description:'', address:'', photo:null, photos:[], tags:'', lat:'', lng:'' }
 }
 
 async function fetchPropertiesList(): Promise<Property[]> {
@@ -43,6 +60,7 @@ async function fetchPropertiesList(): Promise<Property[]> {
 }
 
 export default function Properties(){
+  const t = useT()
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('Todos')
   const [modal, setModal] = useState(false)
@@ -53,6 +71,10 @@ export default function Properties(){
   const [copyGerado, setCopyGerado] = useState<{ propertyId: string; copy: string } | null>(null)
   const [gerandoCopy, setGerandoCopy] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [showMap, setShowMap] = useState(false)
+  const [page, setPage] = useState(1)
+  useEffect(() => { setPage(1) }, [query, statusFilter])
+  const pageSize = 9
   const queryClient = useQueryClient()
 
   const setProperties = (updater: (old: Property[] | undefined) => Property[]) => {
@@ -76,9 +98,24 @@ export default function Properties(){
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
   const save = async () => {
-    if (!form.title.trim() || !form.price) { show('Informe o título e o preço do imóvel.', 'error'); return }
+    if (!form.title.trim()) { show('Informe o título do imóvel.', 'error'); return }
+    if (!isPositiveNumber(form.price)) { show('Informe um preço válido maior que zero.', 'error'); return }
+    if (form.lat && isNaN(Number(form.lat))) { show('Latitude inválida.', 'error'); return }
+    if (form.lng && isNaN(Number(form.lng))) { show('Longitude inválida.', 'error'); return }
     setBusy(true)
     try {
+      const tagsArr = form.tags.split(',').map(t => t.trim()).filter(Boolean)
+      const photoDataUrls: string[] = []
+      const filesToConvert = form.photos.length ? form.photos : (form.photo ? [form.photo] : [])
+      for (const f of filesToConvert) {
+        const url = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader()
+          r.onload = () => resolve(r.result as string)
+          r.onerror = () => reject(new Error('Falha ao ler foto'))
+          r.readAsDataURL(f)
+        })
+        photoDataUrls.push(url)
+      }
       const fields = {
         title: form.title,
         type: form.type,
@@ -92,39 +129,36 @@ export default function Properties(){
         status: form.status,
         description: form.description.trim() || undefined,
         address: form.address.trim() || undefined,
+        tags: tagsArr.length ? tagsArr : undefined,
+        lat: form.lat ? Number(form.lat) : null,
+        lng: form.lng ? Number(form.lng) : null,
       }
       if (editing) {
         const original = itemsRef.find(p => p.id === editing)
         let merged: Property = { ...(original as Property), ...fields, id: editing }
+        if (photoDataUrls.length) {
+          merged = { ...merged, images: [...(original?.images ?? []), ...photoDataUrls], image_url: photoDataUrls[0] }
+        }
         if (isSupabaseConfigured) {
           await updateProperty(editing, appPropertyToDb(merged))
-          if (form.photo) {
-            const path = await uploadPropertyPhoto(editing, form.photo)
-            if (original?.image_url && isStoragePath(original.image_url)) {
-              deletePropertyPhoto(original.image_url).catch(() => {})
-            }
-            await updateProperty(editing, { image_url: path })
-            merged = { ...merged, image_url: path }
+          if (photoDataUrls.length) {
+            await updateProperty(editing, { image_url: merged.image_url ?? null, images: merged.images ?? null })
           }
-        } else if (form.photo && previewUrl) {
+        } else if (photoDataUrls.length && previewUrl) {
           merged = { ...merged, image_url: previewUrl }
         }
         setProperties(old => old?.map(p => p.id === editing ? merged : p) ?? [])
         setEditing(null)
       } else {
         const payload: Omit<Property, 'id' | 'code' | 'created_at' | 'user_id'> = { ...fields }
+        const payloadWithImages = { ...payload, tags: tagsArr.length ? tagsArr : undefined, images: photoDataUrls.length ? photoDataUrls : undefined, image_url: photoDataUrls.length ? photoDataUrls[0] : undefined }
         if (isSupabaseConfigured) {
           const code = `IM-${Date.now().toString(36).toUpperCase()}`
-          let created = await createProperty(appPropertyToDb({ ...payload, code } as Property))
-          if (form.photo) {
-            const path = await uploadPropertyPhoto(created.id, form.photo)
-            await updateProperty(created.id, { image_url: path })
-            created = { ...created, image_url: path }
-          }
+          let created = await createProperty(appPropertyToDb({ ...payloadWithImages, code } as Property))
           setProperties(old => [dbPropertyToApp(created), ...(old ?? [])])
         } else {
-          const demoPhoto = form.photo && previewUrl ? { image_url: previewUrl } : {}
-          setProperties(old => [{ id: crypto.randomUUID(), code: `IM-${String((old ?? []).length + 1).padStart(3, '0')}`, ...payload, ...demoPhoto }, ...(old ?? [])])
+          const demoPhoto = photoDataUrls.length ? { image_url: photoDataUrls[0], images: photoDataUrls } : {}
+          setProperties(old => [{ id: crypto.randomUUID(), code: `IM-${String((old ?? []).length + 1).padStart(3, '0')}`, ...payload, ...demoPhoto, tags: tagsArr.length ? tagsArr : undefined }, ...(old ?? [])])
         }
       }
       setForm(emptyForm())
@@ -176,7 +210,7 @@ export default function Properties(){
   }
 
   const edit = (p: Property) => {
-    setForm({ title: p.title, type: p.type, purpose: p.purpose, price: String(p.price), city: p.city, neighborhood: p.neighborhood, bedrooms: String(p.bedrooms), bathrooms: String(p.bathrooms), area: String(p.area), status: p.status, description: p.description || '', address: p.address || '', photo: null })
+    setForm({ title: p.title, type: p.type, purpose: p.purpose, price: String(p.price), city: p.city, neighborhood: p.neighborhood, bedrooms: String(p.bedrooms), bathrooms: String(p.bathrooms), area: String(p.area), status: p.status, description: p.description || '', address: p.address || '', photo: null, photos: [], tags: (p.tags || []).join(', '), lat: p.lat != null ? String(p.lat) : '', lng: p.lng != null ? String(p.lng) : '' })
     setEditing(p.id)
     setModal(true)
   }
@@ -217,7 +251,7 @@ export default function Properties(){
       <div className="page-heading">
         <div>
           <div className="eyebrow">CATÁLOGO IMOBILIÁRIO</div>
-          <h1>Meus imóveis</h1>
+          <h1>{t('page.properties')}</h1>
           <p>Gerencie seus anúncios, captações e disponibilidade.</p>
         </div>
         <button className="btn primary" onClick={() => { setForm(emptyForm()); setEditing(null); setModal(true) }}>
@@ -233,6 +267,7 @@ export default function Properties(){
           {['Todos', ...STATUSES].map(s => <option key={s}>{s}</option>)}
         </select>
         <span className="muted">{filtered.length} imóveis encontrados</span>
+        <button className="btn secondary small" onClick={() => setShowMap(v => !v)}>{showMap ? 'Ocultar mapa' : 'Ver no mapa'}</button>
         {!isSupabaseConfigured && <span className="muted" style={{ marginLeft: '12px' }}>Modo demonstração (local)</span>}
       </div>
       <div className="properties-grid">
@@ -242,7 +277,7 @@ export default function Properties(){
           title={itemsRef.length === 0 ? 'Nenhum imóvel cadastrado' : 'Nenhum imóvel encontrado'}
           description={itemsRef.length === 0 ? 'Cadastre seu primeiro anúncio para começar a organizar seu catálogo.' : 'Tente outra busca ou remova o filtro de status.'}
           action={itemsRef.length === 0 && <button className="btn primary" onClick={() => { setForm(emptyForm()); setEditing(null); setModal(true) }}><Plus size={16} /> Cadastrar imóvel</button>}
-        /> : filtered.map(p => (
+        /> : filtered.slice((page - 1) * pageSize, page * pageSize).map(p => (
           <article className="property-card" key={p.id}>
             <div className="property-image">
               <PropertyImage src={p.image_url} alt={p.title} />
@@ -258,6 +293,11 @@ export default function Properties(){
                 <span><Maximize2 size={14} />{p.area} m²</span>
               </div>
               <div className="property-price">{money(p.price)}{p.purpose === 'Aluguel' && <small>/mês</small>}</div>
+            {p.tags && p.tags.length > 0 && (
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                {p.tags.map(t => <span key={t} className="tag">{t}</span>)}
+              </div>
+            )}
               <div className="property-actions" style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
                 <button className="btn secondary small" onClick={() => edit(p)}>Editar</button>
                 <button className="btn secondary small" style={{ color: '#ef4444', borderColor: '#ef4444' }} onClick={() => setConfirmId(p.id)}>Excluir</button>
@@ -267,6 +307,25 @@ export default function Properties(){
           </article>
         ))}
       </div>
+      {filtered.length > pageSize && (
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '1rem' }}>
+          <button className="btn secondary small" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button>
+          <span className="muted">Página {page} de {Math.ceil(filtered.length / pageSize)}</span>
+          <button className="btn secondary small" disabled={page >= Math.ceil(filtered.length / pageSize)} onClick={() => setPage(p => p + 1)}>Próxima</button>
+        </div>
+      )}
+      {showMap && (
+        <section className="panel" style={{ marginTop: '1rem', height: '400px' }}>
+          <MapContainer center={[-23.96, -46.33]} zoom={12} style={{ height: '100%', width: '100%', borderRadius: '8px' }}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" />
+            {filtered.filter(p => p.lat && p.lng).map(p => (
+              <Marker key={p.id} position={[p.lat as number, p.lng as number]}>
+                <Popup>{p.title}<br/>{p.neighborhood}, {p.city}<br/>{money(p.price)}</Popup>
+              </Marker>
+            ))}
+          </MapContainer>
+        </section>
+      )}
       {modal && (
         <Modal title={editing ? 'Editar imóvel' : 'Cadastrar novo imóvel'} onClose={() => { setModal(false); setForm(emptyForm()); setEditing(null) }}>
           <div className="form-grid">
@@ -312,7 +371,19 @@ export default function Properties(){
             <label className="span-2">Descrição
               <textarea rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Destaques do imóvel para o anúncio" />
             </label>
-            <label className="span-2">Foto do imóvel
+            <label>Latitude
+              <input type="number" step="any" value={form.lat} onChange={e => setForm({ ...form, lat: e.target.value })} placeholder="-23.96" />
+            </label>
+            <label>Longitude
+              <input type="number" step="any" value={form.lng} onChange={e => setForm({ ...form, lng: e.target.value })} placeholder="-46.33" />
+            </label>
+            <label className="span-2">Fotos do imóvel (múltiplas)
+              <input type="file" accept="image/*" multiple onChange={e => setForm({ ...form, photos: Array.from(e.target.files ?? []) })} />
+            </label>
+            <label className="span-2">Tags (separadas por vírgula)
+              <input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} placeholder="Ex.: urgente, investidor, frente mar" />
+            </label>
+            <label className="span-2">Foto única (legado)
               <input type="file" accept="image/*" onChange={e => setForm({ ...form, photo: e.target.files?.[0] ?? null })} />
               {(previewUrl || editingItem?.image_url) && (
                 <span style={{ display: 'block', marginTop: '8px' }}>

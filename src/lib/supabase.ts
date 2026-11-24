@@ -30,6 +30,10 @@ export type DbProperty = {
   status: string
   description: string | null
   image_url: string | null
+  images: string[] | null
+  tags: string[] | null
+  lat: number | null
+  lng: number | null
   created_at: string
 }
 
@@ -143,6 +147,10 @@ function seedProperties(): DbProperty[] {
     status: p.status,
     description: p.description ?? null,
     image_url: p.image_url ?? null,
+    images: p.images ?? null,
+    tags: p.tags ?? null,
+    lat: p.lat ?? null,
+    lng: p.lng ?? null,
     created_at: p.created_at ?? nowIso(),
   }))
 }
@@ -244,6 +252,10 @@ export async function createProperty(input: Omit<DbProperty, 'id' | 'created_at'
     status: input.status,
     description: input.description,
     image_url: input.image_url,
+    images: input.images,
+    tags: input.tags,
+    lat: input.lat,
+    lng: input.lng,
     created_at: nowIso(),
   }
   list.unshift(created)
@@ -500,6 +512,10 @@ export function dbPropertyToApp(p: DbProperty): Property {
     area: Number(p.area),
     status: (p.status as Property['status']) ?? 'Disponível',
     image_url: p.image_url ?? undefined,
+    images: p.images ?? undefined,
+    tags: p.tags ?? undefined,
+    lat: p.lat ?? undefined,
+    lng: p.lng ?? undefined,
     description: p.description ?? undefined,
     address: p.address ?? undefined,
     user_id: p.user_id,
@@ -524,6 +540,10 @@ export function appPropertyToDb(p: Property, userId?: string): Omit<DbProperty, 
     status: p.status,
     description: p.description ?? null,
     image_url: p.image_url ?? null,
+    images: p.images ?? null,
+    tags: p.tags ?? null,
+    lat: p.lat ?? null,
+    lng: p.lng ?? null,
   }
 }
 

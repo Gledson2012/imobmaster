@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast'
 import { dbLeadToApp, appLeadToDb, fetchLeads, createLead, updateLead, deleteLead, isSupabaseConfigured } from '../lib/supabase'
 import { leadSummary } from '../lib/ai'
 import type { Lead } from '../types'
+import { isPhone } from '../lib/validate'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DndContext, useSensor, PointerSensor, type DragEndEvent } from '@dnd-kit/core'
 import { useSortable, SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
@@ -59,7 +60,9 @@ export default function Leads() {
   }
 
   const save = async () => {
-    if (!f.name.trim() || !f.phone.trim()) { show('Informe o nome e o telefone do lead.', 'error'); return }
+    if (!f.name.trim()) { show('Informe o nome do lead.', 'error'); return }
+    if (!f.phone.trim()) { show('Informe o telefone do lead.', 'error'); return }
+    if (!isPhone(f.phone)) { show('Telefone inválido.', 'error'); return }
     setBusy(true)
     try {
       const fields = { name: f.name, phone: f.phone, source: f.source, property: f.property || null }
@@ -244,7 +247,20 @@ const edit = (l: Lead) => {
                         <div className="lead-card-top"><b>{l.name}</b><span>{l.source}</span></div>
                         <p>{l.property || 'Interesse não informado'}</p>
                         <div className="lead-card-footer">
-                          <a href={`https://wa.me/55${l.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" aria-label={`WhatsApp com ${l.name}`} title="WhatsApp"><MessageCircle size={15} /></a>
+                          <select aria-label={`WhatsApp com ${l.name}`} defaultValue="" onChange={e => {
+                            const t = e.target.value
+                            if (!t) return
+                            const text = t === '1' ? `Olá ${l.name}, tudo bem? Sobre o imóvel ${l.property || 'de interesse'}, podemos agendar uma visita?`
+                              : t === '2' ? `Olá ${l.name}, enviei a proposta. Alguma dúvida?`
+                              : `Olá ${l.name}, ainda tem interesse? Posso ajudar.`
+                            window.open(`https://wa.me/55${l.phone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`, '_blank')
+                            e.target.value = ''
+                          }} style={{ fontSize: '10px' }}>
+                            <option value="">WhatsApp ▾</option>
+                            <option value="1">Agendar visita</option>
+                            <option value="2">Proposta</option>
+                            <option value="3">Follow-up</option>
+                          </select>
                           <a href={`tel:${l.phone}`} aria-label={`Ligar para ${l.name}`} title="Ligar"><Phone size={15} /></a>
                           <select aria-label={`Mover ${l.name} de etapa`} value={l.stage} onChange={e => move(l.id, e.target.value)}>
                             {stages.map(s => <option key={s} value={s}>{s}</option>)}

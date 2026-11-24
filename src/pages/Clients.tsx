@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Plus, Search, Phone, Mail, MessageCircle, ContactRound } from 'lucide-react'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -6,6 +6,8 @@ import { EmptyState, LoadingState } from '../components/States'
 import { useToast } from '../components/Toast'
 import { dbClientToApp, appClientToDb, fetchClients, createClient, updateClient, deleteClient, isSupabaseConfigured } from '../lib/supabase'
 import type { Client } from '../types'
+import { isEmail, isPhone, isPositiveNumber } from '../lib/validate'
+import { useT } from '../lib/i18n'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 type ClientForm = {
@@ -34,6 +36,7 @@ function money(n: number): string {
 }
 
 export default function Clients() {
+  const t = useT()
   const [items, setItems] = useState<Client[]>([])
   const [q, setQ] = useState('')
   const [modal, setModal] = useState(false)
@@ -41,6 +44,8 @@ export default function Clients() {
   const [editing, setEditing] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [page, setPage] = useState(1)
+  const pageSize = 10
   const { show } = useToast()
   const queryClient = useQueryClient()
 
@@ -56,10 +61,14 @@ export default function Clients() {
   })
 
   const itemsRef = data ?? []
+  useEffect(() => { setPage(1) }, [q])
   const filtered = useMemo(() => itemsRef.filter(c => c.name.toLowerCase().includes(q.toLowerCase())), [itemsRef, q])
 
   const save = async () => {
     if (!f.name.trim()) { show('Informe o nome do cliente.', 'error'); return }
+    if (!isEmail(f.email)) { show('E-mail inválido.', 'error'); return }
+    if (!isPhone(f.phone)) { show('Telefone inválido.', 'error'); return }
+    if (f.budget && !isPositiveNumber(f.budget)) { show('Orçamento inválido.', 'error'); return }
     setBusy(true)
     try {
       const payload: Omit<Client, 'id' | 'created_at' | 'user_id'> = { name: f.name, email: f.email, phone: f.phone, interest: f.interest, budget: Number(f.budget) || 0 }
@@ -134,7 +143,7 @@ const edit = (c: Client) => {
       <div className="page-heading">
         <div>
           <div className="eyebrow">RELACIONAMENTO</div>
-          <h1>Clientes</h1>
+          <h1>{t('page.clients')}</h1>
           <p>Organize seus contatos e entenda o que cada cliente procura.</p>
         </div>
         <button className="btn primary" onClick={() => { setF(emptyForm()); setEditing(null); setModal(true) }}>
@@ -164,7 +173,7 @@ const edit = (c: Client) => {
               description={itemsRef.length === 0 ? 'Cadastre seus contatos para acompanhar interesses e orçamentos.' : 'Tente outro termo de busca.'}
               action={itemsRef.length === 0 && <button className="btn primary" onClick={() => { setF(emptyForm()); setEditing(null); setModal(true) }}><Plus size={16} /> Novo cliente</button>}
             /></td></tr> :
-            filtered.map(c => (
+            filtered.slice((page - 1) * pageSize, page * pageSize).map(c => (
               <tr key={c.id}>
                 <td>
                   <div className="table-person">
@@ -180,13 +189,33 @@ const edit = (c: Client) => {
                 <td><b>{money(c.budget)}</b></td>
                 <td>
                   <button className="action-link" onClick={() => edit(c)}>Editar</button>
-                  <a className="action-link" style={{ marginLeft: '12px' }} href={`https://wa.me/55${c.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"><MessageCircle size={16} /> WhatsApp</a>
+                  <select aria-label="Enviar mensagem WhatsApp" defaultValue="" onChange={e => {
+                     const t = e.target.value
+                     if (!t) return
+                     const text = t === '1' ? `Olá ${c.name}, tudo bem? Tenho novidades de imóveis que podem interessar você.`
+                       : t === '2' ? `Olá ${c.name}, segue o imóvel que conversamos. Quando podemos agendar uma visita?`
+                       : `Olá ${c.name}, lembrete do nosso compromisso. Confirma?`
+                     window.open(`https://wa.me/55${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`, '_blank')
+                     e.target.value = ''
+                   }} style={{ marginLeft: '12px', fontSize: '11px' }}>
+                     <option value="">WhatsApp ▾</option>
+                     <option value="1">Novidades</option>
+                     <option value="2">Agendar visita</option>
+                     <option value="3">Lembrete</option>
+                   </select>
                   <button className="action-link" style={{ color: '#ef4444', marginLeft: '12px' }} onClick={() => setConfirmId(c.id)}>Excluir</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {filtered.length > pageSize && (
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', padding: '8px' }}>
+            <button className="btn secondary small" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button>
+            <span className="muted">Página {page} de {Math.ceil(filtered.length / pageSize)}</span>
+            <button className="btn secondary small" disabled={page >= Math.ceil(filtered.length / pageSize)} onClick={() => setPage(p => p + 1)}>Próxima</button>
+          </div>
+        )}
         {!isSupabaseConfigured && <div style={{ padding: '8px', color: '#77839a', fontSize: '13px' }}>Modo demonstração (local)</div>}
       </div>
       {modal && (

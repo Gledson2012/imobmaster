@@ -1,15 +1,6 @@
 import { NavLink } from 'react-router-dom'
+import { useI18n } from '../lib/i18n'
 import { Building2, CalendarDays, ChartNoAxesCombined, CircleDollarSign, ContactRound, LayoutDashboard, Settings, Target, X, LogOut } from 'lucide-react'
-
-const links = [
-  ['/', 'Visão geral', LayoutDashboard],
-  ['/imoveis', 'Imóveis', Building2],
-  ['/clientes', 'Clientes', ContactRound],
-  ['/leads', 'Leads', Target],
-  ['/agenda', 'Agenda', CalendarDays],
-  ['/financeiro', 'Financeiro', CircleDollarSign],
-  ['/relatorios', 'Relatórios', ChartNoAxesCombined],
-] as const
 
 export default function Sidebar({
   open,
@@ -22,6 +13,16 @@ export default function Sidebar({
   user: { full_name?: string; email: string } | null
   onLogout: () => void
 }) {
+  const { t } = useI18n()
+  const links = [
+    ['/', t('nav.dashboard'), LayoutDashboard],
+    ['/imoveis', t('nav.properties'), Building2],
+    ['/clientes', t('nav.clients'), ContactRound],
+    ['/leads', t('nav.leads'), Target],
+    ['/agenda', t('nav.agenda'), CalendarDays],
+    ['/financeiro', t('nav.finance'), CircleDollarSign],
+    ['/relatorios', t('nav.reports'), ChartNoAxesCombined],
+  ] as const
   return (
     <>
       <div className={`sidebar-shade ${open ? 'show' : ''}`} onClick={onClose} aria-hidden="true" />
@@ -63,7 +64,7 @@ export default function Sidebar({
         </nav>
         <div className="sidebar-bottom">
           <NavLink to="/configuracoes" onClick={onClose}>
-            <Settings size={18} /> Configurações
+            <Settings size={18} /> {t('nav.settings')}
           </NavLink>
           {user && (
             <button className="sidebar-logout" onClick={onLogout} title="Sair da conta">
